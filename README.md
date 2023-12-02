@@ -4,6 +4,11 @@
 
 This package uses [bbolt](https://github.com/etcd-io/bbolt) to persist data to disk, and [cbor](github.com/fxamacker/cbor/v2) to encode and decode data.
 
+
+## Disclaimer
+
+This package is not intended to be used in production, it is just a simple wrapper to persist data to disk, is thread safe, and it is not intended to be used in a concurrent environment.
+
 ## Usage
 
 ```go
