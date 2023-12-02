@@ -7,7 +7,7 @@ import (
 )
 
 func TestNewPersistence(t *testing.T) {
-	per, err := NewPersistence("test.db")
+	per, err := NewStore("test.db")
 	assert.NoErrorf(t, err, "error creating store")
 	assert.NotNil(t, per, "store is nil")
 
@@ -50,7 +50,7 @@ func TestNewPersistence(t *testing.T) {
 //	tmpDir, _ := os.MkdirTemp("", "prefix")
 //	defer os.Remove(tmpDir) // clean up
 //
-//	p, _ := NewPersistence(tmpDir)
+//	p, _ := NewStore(tmpDir)
 //	defer p.Close() // clean up
 //
 //	assert.Nil(t, action(p))
@@ -66,7 +66,7 @@ func TestNewPersistence(t *testing.T) {
 //	tmpDir, _ := os.MkdirTemp("", "prefix")
 //	defer os.Remove(tmpDir) // clean up
 //
-//	p, _ := NewPersistence(tmpDir)
+//	p, _ := NewStore(tmpDir)
 //	assert.Nil(t, p.Close())
 //}
 

@@ -18,7 +18,7 @@ type (
 	}
 )
 
-func NewPersistence(ctx context.Context, path string) (*Store, error) {
+func NewStore(ctx context.Context, path string) (*Store, error) {
 	db, err := bolt.Open(path, 0600, nil)
 	if err != nil {
 		return nil, err

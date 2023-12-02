@@ -14,7 +14,7 @@ type MyStruct struct {
 }
 
 func main() {
-	db, err := store.NewPersistence(context.TODO(), "persiste.db")
+	db, err := store.NewStore(context.TODO(), "persiste.db")
 	if err != nil {
 		panic(err)
 	}
