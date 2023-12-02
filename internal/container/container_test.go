@@ -1,50 +1,38 @@
 package container
 
 import (
+	"context"
+	"dataStore/internal/store"
 	"github.com/stretchr/testify/assert"
 	"testing"
+	"time"
 )
 
 type testStruct struct {
 	Name     string
 	LastName string
-	Legend   bool
 	Age      int
 }
 
 func TestNewContainer(t *testing.T) {
-	expectedObj := testStruct{
-		Name:     "Chuck",
-		LastName: "Norris",
-		Legend:   true,
+	db, err := store.NewPersistence(context.TODO(), "testNewContainer.db")
+	assert.NoErrorf(t, err, "error creating store")
+	assert.NotNil(t, db, "store is nil")
+
+	container := NewContainer[testStruct](testStruct{
+		Name:     "John",
+		LastName: "Wick",
 		Age:      42,
-	}
+	}, "test", "testKey", db)
+	assert.NotNil(t, container, "container is nil")
 
-	expectedName := "Test"
-	container1 := NewContainer(expectedName, expectedObj)
+	objectInstance := container.GetObject()
 
-	// Test if container is not nil
-	assert.NotNilf(t, container1, "NewContainer() = nil; want non-nil")
+	objectInstance.Age = 43
+	objectInstance.Name = "John2"
+	objectInstance.LastName = "Wick2"
 
-	// Test if UID is not empty
-	assert.NotEmptyf(t, container1.GetUid(), "GetUid() = ''; want non-empty string")
+	<-time.After(5 * time.Second)
 
-	// Test if container.Name is equal to expected name
-	assert.Equalf(t, container1.Name, expectedName, "Name not equal")
-
-	// Test if the object in container is equal to expected object
-	assert.Equalf(t, container1.GetObject(), expectedObj, "object not equal")
-
-	// Test if the timestamp is not 0
-	assert.NotZero(t, container1.GetTimestamp(), "Timestamp is 0; want non-zero")
-
-	data, err := container1.Pack()
-	assert.NoErrorf(t, err, "Error encoding data: %v", err)
-
-	container2 := NewContainer(expectedName, testStruct{})
-
-	err = container2.UnPack(data)
-	assert.NoErrorf(t, err, "Error decoding data: %v", err)
-
-	assert.Equalf(t, container2.Name, container1.Name, "Name not equal")
+	assert.Equalf(t, 43, container.GetObject().Age, "Age not equal")
 }

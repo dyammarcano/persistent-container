@@ -1,4 +1,4 @@
-package persistence
+package store
 
 import (
 	"fmt"
@@ -8,8 +8,8 @@ import (
 
 func TestNewPersistence(t *testing.T) {
 	per, err := NewPersistence("test.db")
-	assert.NoErrorf(t, err, "error creating persistence")
-	assert.NotNil(t, per, "persistence is nil")
+	assert.NoErrorf(t, err, "error creating store")
+	assert.NotNil(t, per, "store is nil")
 
 	defer per.Close()
 
@@ -46,7 +46,7 @@ func TestNewPersistence(t *testing.T) {
 	}
 }
 
-//func testDBAction(t *testing.T, action func(*Persistence) error) {
+//func testDBAction(t *testing.T, action func(*Store) error) {
 //	tmpDir, _ := os.MkdirTemp("", "prefix")
 //	defer os.Remove(tmpDir) // clean up
 //
@@ -71,7 +71,7 @@ func TestNewPersistence(t *testing.T) {
 //}
 
 //func TestUpdate(t *testing.T) {
-//	testDBAction(t, func(p *Persistence) error {
+//	testDBAction(t, func(p *Store) error {
 //		return p.Update(func(tx *bbolt.Tx) error {
 //			_, err := tx.CreateBucket([]byte("testBucket"))
 //			return err
@@ -80,7 +80,7 @@ func TestNewPersistence(t *testing.T) {
 //}
 //
 //func TestView(t *testing.T) {
-//	testDBAction(t, func(p *Persistence) error {
+//	testDBAction(t, func(p *Store) error {
 //		return p.View(func(tx *bbolt.Tx) error {
 //			_ = tx.Bucket([]byte("testBucket"))
 //			return nil
@@ -89,7 +89,7 @@ func TestNewPersistence(t *testing.T) {
 //}
 //
 //func TestBatch(t *testing.T) {
-//	testDBAction(t, func(p *Persistence) error {
+//	testDBAction(t, func(p *Store) error {
 //		return p.Batch(func(tx *bbolt.Tx) error {
 //			_, err := tx.CreateBucket([]byte("testBucket"))
 //			return err

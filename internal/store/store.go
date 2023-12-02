@@ -1,4 +1,4 @@
-package persistence
+package store
 
 import (
 	"context"
@@ -11,72 +11,52 @@ import (
 type (
 	performAction func(tx *bolt.Tx) error
 
-	IPersistence interface {
-		Close() error
-		Update(fn performAction) error
-		View(fn performAction) error
-		Batch(fn performAction) error
-		DeleteBucket(bucketName string) error
-		DeleteKey(bucketName string, key string) error
-		Put(bucketName string, key string, value []byte) error
-		PutBatch(bucketName string, key string, values [][]byte) error
-		Get(bucketName string, key string) ([]byte, error)
-		GetBucket(bucketName string) (*bolt.Bucket, error)
-		GetBucketKeys(bucketName string) ([]string, error)
-		GetBucketValues(bucketName string) ([][]byte, error)
-		GetBucketKeysValues(bucketName string) ([][]byte, [][]byte, error)
-		SerializeObject(obj any) ([]byte, error)
-		DeserializeObject(data []byte, obj any) error
-		GenerateKey() string
-		GenerateKeyBytes() []byte
-	}
-
-	Persistence struct {
+	Store struct {
 		*bolt.DB
 		mu  sync.RWMutex
 		Ctx context.Context
 	}
 )
 
-func NewPersistence(ctx context.Context, path string) (*Persistence, error) {
+func NewPersistence(ctx context.Context, path string) (*Store, error) {
 	db, err := bolt.Open(path, 0600, nil)
 	if err != nil {
 		return nil, err
 	}
 
-	return &Persistence{
+	return &Store{
 		DB:  db,
 		mu:  sync.RWMutex{},
 		Ctx: ctx,
 	}, nil
 }
 
-func (p *Persistence) Close() error {
+func (p *Store) Close() error {
 	return p.DB.Close()
 }
 
-func (p *Persistence) Update(fn performAction) error {
+func (p *Store) Update(fn performAction) error {
 	p.mu.Lock()
 	defer p.mu.Unlock()
 
 	return p.DB.Update(fn)
 }
 
-func (p *Persistence) View(fn performAction) error {
+func (p *Store) View(fn performAction) error {
 	return p.DB.View(fn)
 }
 
-func (p *Persistence) Batch(fn performAction) error {
+func (p *Store) Batch(fn performAction) error {
 	return p.DB.Batch(fn)
 }
 
-func (p *Persistence) DeleteBucket(bucketName string) error {
+func (p *Store) DeleteBucket(bucketName string) error {
 	return p.Update(func(tx *bolt.Tx) error {
 		return tx.DeleteBucket([]byte(bucketName))
 	})
 }
 
-func (p *Persistence) DeleteKey(bucketName string, key string) error {
+func (p *Store) DeleteKey(bucketName string, key string) error {
 	return p.Update(func(tx *bolt.Tx) error {
 		bucket := tx.Bucket([]byte(bucketName))
 		if bucket == nil {
@@ -86,7 +66,7 @@ func (p *Persistence) DeleteKey(bucketName string, key string) error {
 	})
 }
 
-func (p *Persistence) Put(bucketName string, key string, value []byte) error {
+func (p *Store) Put(bucketName string, key string, value []byte) error {
 	return p.Update(func(tx *bolt.Tx) error {
 		bucket, err := tx.CreateBucketIfNotExists([]byte(bucketName))
 		if err != nil {
@@ -96,7 +76,7 @@ func (p *Persistence) Put(bucketName string, key string, value []byte) error {
 	})
 }
 
-func (p *Persistence) PutBatch(bucketName string, key string, values [][]byte) error {
+func (p *Store) PutBatch(bucketName string, key string, values [][]byte) error {
 	return p.Batch(func(tx *bolt.Tx) error {
 		bucket, err := tx.CreateBucketIfNotExists([]byte(bucketName))
 		if err != nil {
@@ -111,7 +91,7 @@ func (p *Persistence) PutBatch(bucketName string, key string, values [][]byte) e
 	})
 }
 
-func (p *Persistence) Get(bucketName string, key string) ([]byte, error) {
+func (p *Store) Get(bucketName string, key string) ([]byte, error) {
 	var value []byte
 	err := p.View(func(tx *bolt.Tx) error {
 		bucket := tx.Bucket([]byte(bucketName))
@@ -124,7 +104,7 @@ func (p *Persistence) Get(bucketName string, key string) ([]byte, error) {
 	return value, err
 }
 
-func (p *Persistence) GetBucket(bucketName string) (*bolt.Bucket, error) {
+func (p *Store) GetBucket(bucketName string) (*bolt.Bucket, error) {
 	var bucket *bolt.Bucket
 	err := p.View(func(tx *bolt.Tx) error {
 		bucket = tx.Bucket([]byte(bucketName))
@@ -133,7 +113,7 @@ func (p *Persistence) GetBucket(bucketName string) (*bolt.Bucket, error) {
 	return bucket, err
 }
 
-func (p *Persistence) GetBucketKeys(bucketName string) ([]string, error) {
+func (p *Store) GetBucketKeys(bucketName string) ([]string, error) {
 	var keys []string
 	err := p.View(func(tx *bolt.Tx) error {
 		bucket := tx.Bucket([]byte(bucketName))
@@ -148,7 +128,7 @@ func (p *Persistence) GetBucketKeys(bucketName string) ([]string, error) {
 	return keys, err
 }
 
-func (p *Persistence) GetBucketValues(bucketName string) ([][]byte, error) {
+func (p *Store) GetBucketValues(bucketName string) ([][]byte, error) {
 	var values [][]byte
 	err := p.View(func(tx *bolt.Tx) error {
 		bucket := tx.Bucket([]byte(bucketName))
@@ -163,7 +143,7 @@ func (p *Persistence) GetBucketValues(bucketName string) ([][]byte, error) {
 	return values, err
 }
 
-func (p *Persistence) GetBucketKeysValues(bucketName string) ([][]byte, [][]byte, error) {
+func (p *Store) GetBucketKeysValues(bucketName string) ([][]byte, [][]byte, error) {
 	var keys [][]byte
 	var values [][]byte
 	err := p.View(func(tx *bolt.Tx) error {
@@ -180,18 +160,18 @@ func (p *Persistence) GetBucketKeysValues(bucketName string) ([][]byte, [][]byte
 	return keys, values, err
 }
 
-func (p *Persistence) SerializeObject(obj any) ([]byte, error) {
+func (p *Store) SerializeObject(obj any) ([]byte, error) {
 	return json.Marshal(obj)
 }
 
-func (p *Persistence) DeserializeObject(data []byte, obj any) error {
+func (p *Store) DeserializeObject(data []byte, obj any) error {
 	return json.Unmarshal(data, obj)
 }
 
-func (p *Persistence) GenerateKey() string {
+func (p *Store) GenerateKey() string {
 	return uuid.New().String()
 }
 
-func (p *Persistence) GenerateKeyBytes() []byte {
+func (p *Store) GenerateKeyBytes() []byte {
 	return []byte(p.GenerateKey())
 }
