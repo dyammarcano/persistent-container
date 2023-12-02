@@ -1,3 +1,12 @@
+# Data Store simple container struct to wrap any struct and persist it to disk as CBOR encoded data.
+
+## Under the hood
+
+This package uses [bbolt](https://github.com/etcd-io/bbolt) to persist data to disk, and [cbor](github.com/fxamacker/cbor/v2) to encode and decode data.
+
+## Usage
+
+```go
 package main
 
 import (
@@ -39,3 +48,5 @@ func main() {
 	fmt.Printf("name: %s\n", newContainer.GetObject().Name)
 	fmt.Printf("lastName: %s\n", newContainer.GetObject().LastName)
 }
+
+```
