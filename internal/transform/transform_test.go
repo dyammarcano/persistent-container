@@ -1,8 +1,11 @@
 package transform
 
 import (
+	"context"
+	"dataStore/internal/persistence"
 	"github.com/stretchr/testify/assert"
 	"testing"
+	"time"
 )
 
 type testStruct struct {
@@ -11,20 +14,25 @@ type testStruct struct {
 	Age      int
 }
 
-func TestDecodeGob(t *testing.T) {
-	testData := testStruct{
+func TestNewContainer(t *testing.T) {
+	db, err := persistence.NewPersistence(context.TODO(), "testNewContainer.db")
+	assert.NoErrorf(t, err, "error creating persistence")
+	assert.NotNil(t, db, "persistence is nil")
+
+	container := NewContainer[testStruct](testStruct{
 		Name:     "John",
 		LastName: "Wick",
 		Age:      42,
-	}
+	}, "test", "testKey", db)
+	assert.NotNil(t, container, "container is nil")
 
-	encoded, err := EncodeGob(testData)
-	assert.NoErrorf(t, err, "Error encoding data: %v", err)
+	objectInstance := container.GetObject()
 
-	//var decoded testStruct
-	decoded, err := DecodeGobGeneric[testStruct](encoded)
-	assert.NoErrorf(t, err, "Error decoding data: %v", err)
+	objectInstance.Age = 43
+	objectInstance.Name = "John2"
+	objectInstance.LastName = "Wick2"
 
-	assert.Equalf(t, testData.Age, decoded.Age, "Age not equal")
-	assert.Equalf(t, testData.Name, decoded.Name, "Name not equal")
+	<-time.After(5 * time.Second)
+
+	assert.Equalf(t, 43, container.GetObject().Age, "Age not equal")
 }

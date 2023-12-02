@@ -1,6 +1,7 @@
 package persistence
 
 import (
+	"context"
 	"encoding/json"
 	"github.com/google/uuid"
 	bolt "go.etcd.io/bbolt"
@@ -10,21 +11,43 @@ import (
 type (
 	performAction func(tx *bolt.Tx) error
 
+	IPersistence interface {
+		Close() error
+		Update(fn performAction) error
+		View(fn performAction) error
+		Batch(fn performAction) error
+		DeleteBucket(bucketName string) error
+		DeleteKey(bucketName string, key string) error
+		Put(bucketName string, key string, value []byte) error
+		PutBatch(bucketName string, key string, values [][]byte) error
+		Get(bucketName string, key string) ([]byte, error)
+		GetBucket(bucketName string) (*bolt.Bucket, error)
+		GetBucketKeys(bucketName string) ([]string, error)
+		GetBucketValues(bucketName string) ([][]byte, error)
+		GetBucketKeysValues(bucketName string) ([][]byte, [][]byte, error)
+		SerializeObject(obj any) ([]byte, error)
+		DeserializeObject(data []byte, obj any) error
+		GenerateKey() string
+		GenerateKeyBytes() []byte
+	}
+
 	Persistence struct {
 		*bolt.DB
-		mu sync.RWMutex
+		mu  sync.RWMutex
+		Ctx context.Context
 	}
 )
 
-func NewPersistence(path string) (*Persistence, error) {
+func NewPersistence(ctx context.Context, path string) (*Persistence, error) {
 	db, err := bolt.Open(path, 0600, nil)
 	if err != nil {
 		return nil, err
 	}
 
 	return &Persistence{
-		DB: db,
-		mu: sync.RWMutex{},
+		DB:  db,
+		mu:  sync.RWMutex{},
+		Ctx: ctx,
 	}, nil
 }
 

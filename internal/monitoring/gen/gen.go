@@ -16,7 +16,12 @@ func main() {
 		panic(err)
 	}
 
-	log.Info("build vue project")
+	log.Info("install npm dependencies and build vue project")
+
+	// install npm dependencies
+	if err := exec.Command("npm", "install").Run(); err != nil {
+		log.Fatal(err.Error())
+	}
 
 	// build vue project
 	if err := exec.Command("npm", "run", "build").Run(); err != nil {

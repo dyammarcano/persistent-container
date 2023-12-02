@@ -1,32 +1,161 @@
 package transform
 
 import (
-	"bytes"
-	"encoding/gob"
-	flatbuffers "github.com/google/flatbuffers/go"
+	"context"
+	"dataStore/internal/persistence"
+	"github.com/fxamacker/cbor/v2"
+	"reflect"
+	"sync"
+	"time"
 )
 
-func EncodeGob(v any) ([]byte, error) {
-	var buf bytes.Buffer
-	err := gob.NewEncoder(&buf).Encode(v)
-	return buf.Bytes(), err
+type (
+	Container[T any] struct {
+		item        T
+		itemClone   T
+		bucketName  string
+		key         string
+		db          *persistence.Persistence
+		saved       bool
+		modified    bool
+		lasModified int64
+		ctx         context.Context
+		mu          sync.RWMutex
+	}
+)
+
+func NewContainer[T any](obj T, bucketName string, key string, db *persistence.Persistence) *Container[T] {
+	c := &Container[T]{
+		db:         db,
+		item:       obj,
+		ctx:        db.Ctx,
+		bucketName: bucketName,
+		key:        key,
+		mu:         sync.RWMutex{},
+	}
+
+	c.clone()         // clone object
+	go c.isModified() // start isModified goroutine
+
+	return c
 }
 
-func DecodeGob(data []byte, v any) error {
-	return gob.NewDecoder(bytes.NewReader(data)).Decode(v)
+// encode encodes the object to cbor
+func (c *Container[T]) encode() ([]byte, error) {
+	return cbor.Marshal(c.item)
 }
 
-func DecodeGobGeneric[T any](data []byte) (T, error) {
-	var v T
-	err := DecodeGob(data, &v)
-	return v, err
-}
-
-func EncodeFlatBuffers(v any) ([]byte, error) {
-	builder := flatbuffers.NewBuilder(0)
-	return builder.FinishedBytes(), nil
-}
-
-func DecodeFlatBuffers(data []byte, v any) error {
+// decode decodes the object from cbor
+func (c *Container[T]) decode(data []byte) error {
+	if err := cbor.Unmarshal(data, &c.item); err != nil {
+		return err
+	}
+	c.clone()
 	return nil
+}
+
+// clone clones the object
+func (c *Container[T]) clone() {
+	c.mu.Lock()
+	defer c.mu.Unlock()
+	c.itemClone = c.item
+}
+
+// isModified checks if the object has been modified
+func (c *Container[T]) isModified() {
+	ticker := time.NewTicker(500 * time.Millisecond)
+	defer ticker.Stop()
+
+	for {
+		select {
+		case tick := <-ticker.C:
+			c.checkModified(tick)
+		case <-c.ctx.Done():
+			return
+		}
+	}
+}
+
+// checkModified checks if the object has been modified
+func (c *Container[T]) checkModified(tick time.Time) {
+	c.mu.Lock()
+	defer c.mu.Unlock()
+
+	if tick.Unix()-c.lasModified > 1 {
+		c.modified = !reflect.DeepEqual(c.item, c.itemClone)
+		c.lasModified = tick.Unix()
+
+		if c.modified {
+			if err := c.set(); err != nil {
+				return
+			}
+		}
+	}
+}
+
+// get returns the object from the database
+func (c *Container[T]) get() error {
+	data, err := c.db.Get(c.bucketName, c.key)
+	if err != nil {
+		return err
+	}
+
+	return c.decode(data)
+}
+
+// set sets the object in the database
+func (c *Container[T]) set() error {
+	if !c.modified {
+		return nil // No need to set if not modified
+	}
+
+	data, err := c.encode()
+	if err != nil {
+		return err
+	}
+
+	if err = c.db.Put(c.bucketName, c.key, data); err != nil {
+		return err
+	}
+
+	c.saved = true
+	c.modified = false
+	c.clone()
+
+	return nil
+}
+
+// Save saves the object to the database
+func (c *Container[T]) Save() error {
+	c.mu.Lock()
+	defer c.mu.Unlock()
+
+	// Check if the key exists in the database
+	if err := c.get(); err != nil {
+		return err
+	}
+
+	// Update the database only if modified
+	return c.set()
+}
+
+// IsModified returns true if the object has been modified
+func (c *Container[T]) IsModified() bool {
+	c.mu.RLock()
+	defer c.mu.RUnlock()
+	return c.modified
+}
+
+// IsSaved returns true if the object has been saved
+func (c *Container[T]) IsSaved() bool {
+	c.mu.RLock()
+	defer c.mu.RUnlock()
+	return c.saved
+}
+
+// GetObject returns the object
+func (c *Container[T]) GetObject() *T {
+	c.mu.RLock()
+	defer c.mu.RUnlock()
+	return &c.item
 }

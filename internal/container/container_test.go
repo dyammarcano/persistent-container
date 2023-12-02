@@ -33,7 +33,7 @@ func TestNewContainer(t *testing.T) {
 	assert.Equalf(t, container1.Name, expectedName, "Name not equal")
 
 	// Test if the object in container is equal to expected object
-	assert.Equalf(t, container1.GetObject(), expectedObj, "Object not equal")
+	assert.Equalf(t, container1.GetObject(), expectedObj, "object not equal")
 
 	// Test if the timestamp is not 0
 	assert.NotZero(t, container1.GetTimestamp(), "Timestamp is 0; want non-zero")
