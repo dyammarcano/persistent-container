@@ -10,12 +10,95 @@ import (
 	"github.com/gin-gonic/gin"
 	"github.com/google/uuid"
 	"net/http"
+	"strings"
 	"sync"
 	"time"
 )
 
 //go:embed all:dist/*
 var assetsFiles embed.FS
+
+type (
+	Cache struct {
+		assets map[string]Item
+		fs     embed.FS
+		ttl    time.Duration
+	}
+
+	Item struct {
+		name string
+		data []byte
+		ttl  int64
+		mime string
+	}
+)
+
+func NewCacheFS(ttl time.Duration) *Cache {
+	c := &Cache{
+		ttl:    ttl,
+		assets: make(map[string]Item),
+		fs:     assetsFiles,
+	}
+
+	go func() {
+		for {
+			for k, v := range c.assets {
+				if v.ttl < time.Now().Unix() {
+					delete(c.assets, k)
+					log.Infof("cache expired for %s", k)
+				}
+			}
+
+			time.Sleep(ttl)
+		}
+	}()
+
+	return c
+}
+
+func (c *Cache) AssetFile(name string) ([]byte, string, error) {
+	return c.RootFile(fmt.Sprintf("assets%s", name))
+}
+
+func (c *Cache) RootFile(name string) ([]byte, string, error) {
+	item, ok := c.assets[name]
+	if !ok {
+		data, err := c.fs.ReadFile(fmt.Sprintf("dist/%s", name))
+		if err != nil {
+			return nil, "", err
+		}
+
+		item = Item{
+			name: name,
+			data: data,
+			mime: c.geMimeType(data, name),
+			ttl:  time.Now().Add(c.ttl).Unix(),
+		}
+
+		c.assets[name] = item
+		log.Infof("cache miss for %s", name)
+	}
+
+	return item.data, item.mime, nil
+}
+
+// workarounds for mime types http.DetectContentType() doesn't detect
+func (c *Cache) geMimeType(data []byte, name string) string {
+	switch {
+	case strings.HasSuffix(name, ".css"):
+		return "text/css; charset=utf-8"
+	case strings.HasSuffix(name, ".html"):
+		return "text/html; charset=utf-8"
+	case strings.HasSuffix(name, ".js"):
+		return "application/javascript; charset=utf-8"
+	case strings.HasSuffix(name, ".svg"):
+		return "image/svg+xml; charset=utf-8"
+	case strings.HasSuffix(name, ".ico"):
+		return "image/x-icon"
+	default:
+		return http.DetectContentType(data)
+	}
+}
 
 //	type UI struct {
 //		r *mux.Router
@@ -45,6 +128,7 @@ type (
 		router *gin.Engine
 		ctx    context.Context
 		db     *store.Store
+		cache  *Cache
 	}
 )
 
@@ -55,6 +139,7 @@ func newMonitoring() *Monitoring {
 		port:   ":8080",
 		ctx:    context.Background(),
 		router: gin.New(),
+		cache:  NewCacheFS(24 * time.Hour),
 	}
 
 	var err error
@@ -63,7 +148,7 @@ func newMonitoring() *Monitoring {
 		log.Fatal(err.Error())
 	}
 
-	m.router.Use(hacks())
+	m.router.Use(hacks(m.ctx)) // TODO: remove this
 	m.router.Use(gin.Recovery())
 
 	m.router.Use(gin.LoggerWithFormatter(func(param gin.LogFormatterParams) string {
@@ -83,49 +168,86 @@ func newMonitoring() *Monitoring {
 	return m
 }
 
-func hacks() gin.HandlerFunc {
-	ticker := time.NewTicker(5 * time.Second)
-	persistLogsCh := make(chan []byte, 10)
+func hackAction(ctx context.Context, ticker *time.Ticker, persistLogsCh chan *http.Request) {
+	defer func() {
+		ticker.Stop()
+		close(persistLogsCh)
+	}()
 
-	go func() {
-		defer func() {
-			ticker.Stop()
-			close(persistLogsCh)
-		}()
+	for {
+		select {
+		case <-ctx.Done():
+			return
+		case <-ticker.C:
+			if len(persistLogsCh) > 0 {
+				for len(persistLogsCh) > 0 {
+					data := bytes.Buffer{}
 
-		for {
-			select {
-			case <-mon.ctx.Done():
-				return
-			case <-ticker.C:
-				if len(persistLogsCh) > 0 {
-					logs := make([][]byte, 0, len(persistLogsCh))
-					for len(persistLogsCh) > 0 {
-						logs = append(logs, <-persistLogsCh)
-					}
+					request := <-persistLogsCh
 
-					if err := mon.db.PutBatch("logs", uuid.NewString(), logs); err != nil {
-						log.Errorf("error putting batch key/value pair: %s", err.Error())
+					data.WriteString(fmt.Sprintf("Method: %s\n", request.Method))
+					data.WriteString(fmt.Sprintf("URL: %s\n", request.URL))
+					data.WriteString(fmt.Sprintf("Proto: %s\n", request.Proto))
+					data.WriteString(fmt.Sprintf("Host: %s\n", request.Host))
+					data.WriteString(fmt.Sprintf("RemoteAddr: %s\n", request.RemoteAddr))
+					data.WriteString(fmt.Sprintf("RequestURI: %s\n", request.RequestURI))
+					data.WriteString(fmt.Sprintf("Header: %s\n", request.Header))
+					data.WriteString(fmt.Sprintf("Body: %s\n", request.Body))
+					data.WriteString(fmt.Sprintf("ContentLength: %d\n", request.ContentLength))
+					data.WriteString(fmt.Sprintf("TransferEncoding: %s\n", request.TransferEncoding))
+					data.WriteString(fmt.Sprintf("Close: %t\n", request.Close))
+					data.WriteString(fmt.Sprintf("Form: %s\n", request.Form))
+					data.WriteString(fmt.Sprintf("PostForm: %s\n", request.PostForm))
+					data.WriteString(fmt.Sprintf("MultipartForm: %v\n", request.MultipartForm))
+
+					//data, err := json.Marshal(<-persistLogsCh)
+					//if err != nil {
+					//	log.Errorf("error marshalling request: %s", err.Error())
+					//	return
+					//}
+
+					if err := mon.db.Put("requests", uuid.NewString(), data.Bytes()); err != nil {
+						log.Errorf("error putting key/value pair: %s", err.Error())
 					}
 				}
 			}
 		}
-	}()
+	}
+}
+
+func hacks(ctx context.Context) gin.HandlerFunc {
+	ticker := time.NewTicker(15 * time.Second)
+	persistLogsCh := make(chan *http.Request, 10)
+
+	go hackAction(ctx, ticker, persistLogsCh)
 
 	return func(c *gin.Context) {
-		//get request and save it in a buffer
-		buf := bytes.Buffer{}
-
-		//process request
+		persistLogsCh <- c.Request
 		c.Next()
+	}
+}
 
-		//get response and save it in a buffer
-		buf.WriteString("\n")
+func basicAuth() gin.HandlerFunc {
+	return func(c *gin.Context) {
+		//user, pass, ok := c.Request.BasicAuth()
+		//if !ok {
+		//	c.AbortWithStatus(http.StatusUnauthorized)
+		//	return
+		//}
+		//
+		//if user != "admin" || pass != "admin" {
+		//	c.AbortWithStatus(http.StatusUnauthorized)
+		//	return
+		//}
+
+		log.Infof("restricted access to %s", c.Request.URL.Path)
+
+		c.Next()
 	}
 }
 
 func (m *Monitoring) routes() {
-	v1 := m.router.Group("/api/v1")
+	v1 := m.router.Group("/api/v1", basicAuth())
 
 	{
 		v1.GET("/health", func(c *gin.Context) {
@@ -137,7 +259,8 @@ func (m *Monitoring) routes() {
 		})
 
 		v1.GET("/data/:id", func(c *gin.Context) {
-			c.JSON(http.StatusOK, gin.H{"message": "GET API endpoint hit [data/:id]"})
+			id := c.Param("id")
+			c.JSON(http.StatusOK, gin.H{"message": fmt.Sprintf("GET API endpoint hit [data/%s]", id)})
 		})
 
 		v1.POST("/data", func(c *gin.Context) {
@@ -147,34 +270,34 @@ func (m *Monitoring) routes() {
 
 	{
 		m.router.GET("/assets/*filepath", func(c *gin.Context) {
-			path := fmt.Sprintf("dist/assets%s", c.Param("filepath"))
-			data, err := assetsFiles.ReadFile(path)
+			path := c.Param("filepath")
+			data, mime, err := m.cache.AssetFile(path)
 			if err != nil {
 				c.String(http.StatusNotFound, "Resource file not found")
 				return
 			}
 
-			c.Data(http.StatusOK, http.DetectContentType(data), data)
+			c.Data(http.StatusOK, mime, data)
 		})
 
 		m.router.GET("/", func(c *gin.Context) {
-			data, err := assetsFiles.ReadFile("dist/index.html")
+			data, mime, err := m.cache.RootFile("index.html")
 			if err != nil {
 				c.String(http.StatusNotFound, "File not found")
 				return
 			}
 
-			c.Data(http.StatusOK, http.DetectContentType(data), data)
+			c.Data(http.StatusOK, mime, data)
 		})
 
 		m.router.GET("/favicon.ico", func(c *gin.Context) {
-			data, err := assetsFiles.ReadFile("dist/favicon.ico")
+			data, mime, err := m.cache.RootFile("favicon.ico")
 			if err != nil {
 				c.String(http.StatusNotFound, "favicon file not found")
 				return
 			}
 
-			c.Data(http.StatusOK, http.DetectContentType(data), data)
+			c.Data(http.StatusOK, mime, data)
 		})
 	}
 }
