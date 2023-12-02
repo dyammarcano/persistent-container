@@ -1,4 +1,6 @@
-# Data Store simple container struct to wrap any struct and persist it to disk as CBOR encoded data.
+# Data Store 
+
+### Simple container struct to wrap any struct and persist it to disk as CBOR encoded data.
 
 ## Under the hood
 
