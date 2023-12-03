@@ -1,9 +1,9 @@
 package store
 
 import (
-	"bytes"
 	"context"
-	"encoding/gob"
+	"encoding/json"
+	"fmt"
 	"github.com/google/uuid"
 	bolt "go.etcd.io/bbolt"
 	"sync"
@@ -93,12 +93,12 @@ func (p *Store) PutBatch(bucketName string, key string, values [][]byte) error {
 }
 
 func (p *Store) PutObject(bucketName string, key string, v any) error {
-	var buffer bytes.Buffer
-	if err := gob.NewEncoder(&buffer).Encode(v); err != nil {
+	data, err := json.Marshal(v)
+	if err != nil {
 		return err
 	}
 
-	return p.Put(bucketName, key, buffer.Bytes())
+	return p.Put(bucketName, key, data)
 }
 
 func (p *Store) Get(bucketName string, key string) ([]byte, error) {
@@ -171,13 +171,17 @@ func (p *Store) GetBucketKeysValues(bucketName string) ([][]byte, [][]byte, erro
 	return keys, values, err
 }
 
-func (p *Store) GetObject(bucketName string, key string, v any) error {
+func (p *Store) GetObject(bucketName string, key string) (any, error) {
 	value, err := p.Get(bucketName, key)
 	if err != nil {
-		return err
+		return nil, err
 	}
 
-	return gob.NewDecoder(bytes.NewReader(value)).Decode(v)
+	var v any
+	if err := json.Unmarshal(value, &v); err != nil {
+		return nil, fmt.Errorf("failed to decode object: %v", err)
+	}
+	return v, err
 }
 
 func GenerateKey() string {

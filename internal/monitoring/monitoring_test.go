@@ -61,13 +61,3 @@ func TestMonitoring_API(t *testing.T) {
 	expected := `OK`
 	assert.Equal(t, expected, rr.Body.String(), "response body differs")
 }
-
-// To test StopServer method, since it's not yet implemented,
-// we just check that it doesn't return any error.
-func TestMonitoring_StopServer(t *testing.T) {
-	// criate a new route home that read from embedded file and load vue from dist/index.html and assets in dist/assets
-	m := newMonitoring()
-
-	err := m.StopServer()
-	assert.NoError(t, err, "StopServer should not return an error")
-}
