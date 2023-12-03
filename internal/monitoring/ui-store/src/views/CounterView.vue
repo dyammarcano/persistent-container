@@ -1,6 +1,4 @@
 <script setup lang="ts">
-import {defineComponent, ref} from 'vue';
-import {Toast} from 'bootstrap';
 import {useCounterStore} from "../stores/counterStore";
 
 
@@ -8,9 +6,6 @@ const counterStore = useCounterStore();
 
 const incrementCount = () => {
   counterStore.incrementCount();
-
-  const toast = new Toast(document.getElementById('toast'));
-  toast.show();
 };
 </script>
 

@@ -1,14 +1,16 @@
 <script setup lang="ts">
-import {ref, onMounted} from 'vue';
+import {onMounted, ref} from 'vue';
 import axios from 'axios';
 
-const items = ref([]);
-const itemToDelete = ref(null);
+interface Item {
+  id: number;
+  title: string;
+}
+
+const items = ref<Item[]>([]);
+const itemToDelete = ref<Item | null>(null);
 
 axios.interceptors.request.use((config) => {
-  //Access-Control-Allow-Origin
-  // config.headers['Access-Control-Allow-Origin'] = '*';
-
   const token = '3B3sZjQcU2Pr8stjtBsKDtZyocA9D3DRHNbyf1y3uaUCxoEmYcBM9dph2QqLtS4YsNbbpAYik9AiU8XEVJ5Au8pVvW34nH1SjTU3XLWweJ681VVCXz65WzhZVHCEarRTm9G7mSDuQoAUiNZjdw1g9FnjW8LWeSigMKRGRDdfJgQktx8iS5WuNh15yWL7jjLXa9W3Zzj84Z9hmM31E2Fu2Prtnwx2tUZfC5CwVzzZV4ZdGSizMbUGnTMzBWh2dsT7TmzFvJZm86AD4rNhoyw7guPn4Lmm41hCb8odYr1FktqLWrkAnLAQrNh3tP9dEBoh';
 
   config.headers.Authorization = `Bearer ${token}`;
@@ -27,9 +29,11 @@ const prepareDelete = ({item}: { item: any }) => {
   itemToDelete.value = item;
 }
 
-const deleteItem = async (p: { item: any }) => {
-  await axios.delete(`http://localhost:8080/api/v1/data/${itemToDelete.value.id}`);
-  items.value = items.value.filter(item => item.id !== itemToDelete.value.id);
+const deleteItem = async ({itemToDelete}: { itemToDelete: any }) => {
+  await axios.delete(`http://localhost:8080/api/v1/data/${itemToDelete.id}`);
+  items.value = items.value.filter(item => {
+    return item.id !== itemToDelete.id;
+  });
   itemToDelete.value = null;
 }
 
@@ -52,7 +56,9 @@ const viewItem = ({id}: { id: any }) => {
 
         <div class="btn-group" role="group" aria-label="Basic example">
           <button type="button" class="btn btn-secondary" @click="viewItem({id : item.id})">View</button>
-          <button type="button" class="btn btn-danger" @click="prepareDelete({item})" data-bs-toggle="modal" data-bs-target="#deleteModal">Delete</button>
+          <button type="button" class="btn btn-danger" @click="prepareDelete({item})" data-bs-toggle="modal"
+                  data-bs-target="#deleteModal">Delete
+          </button>
         </div>
 
       </li>
@@ -71,7 +77,9 @@ const viewItem = ({id}: { id: any }) => {
           </div>
           <div class="modal-footer">
             <button type="button" class="btn btn-secondary" data-bs-dismiss="modal">Cancel</button>
-            <button type="button" class="btn btn-danger" @click="deleteItem({item : itemToDelete})" data-bs-dismiss="modal">Delete</button>
+            <button type="button" class="btn btn-danger" @click="deleteItem({itemToDelete : {item : itemToDelete}})"
+                    data-bs-dismiss="modal">Delete
+            </button>
           </div>
         </div>
       </div>
