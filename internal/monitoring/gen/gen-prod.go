@@ -1,4 +1,4 @@
-//go:build generate
+//go:build generate && prod
 
 package main
 
@@ -8,7 +8,9 @@ import (
 	"os/exec"
 )
 
-//go:generate go run gen.go
+//go:generate go run gen-prod.go
+
+// to execute this file, run `go generate -prod ./...` from the root directory of this project
 
 func main() {
 	//change directory
@@ -16,14 +18,7 @@ func main() {
 		panic(err)
 	}
 
-	log.Info("install npm dependencies and build vue project")
-
-	// install npm dependencies
-	if err := exec.Command("npm", "install").Run(); err != nil {
-		log.Fatal(err.Error())
-	}
-
-	// build vue project
+	// build vue project in production mode
 	if err := exec.Command("npm", "run", "build").Run(); err != nil {
 		log.Fatal(err.Error())
 	}

@@ -3,6 +3,7 @@ package monitoring
 import (
 	"bytes"
 	"context"
+	"dataStore/internal/cache"
 	"dataStore/internal/store"
 	"embed"
 	"fmt"
@@ -10,95 +11,12 @@ import (
 	"github.com/gin-gonic/gin"
 	"github.com/google/uuid"
 	"net/http"
-	"strings"
 	"sync"
 	"time"
 )
 
 //go:embed all:dist/*
 var assetsFiles embed.FS
-
-type (
-	Cache struct {
-		assets map[string]Item
-		fs     embed.FS
-		ttl    time.Duration
-	}
-
-	Item struct {
-		name string
-		data []byte
-		ttl  int64
-		mime string
-	}
-)
-
-func NewCacheFS(ttl time.Duration) *Cache {
-	c := &Cache{
-		ttl:    ttl,
-		assets: make(map[string]Item),
-		fs:     assetsFiles,
-	}
-
-	go func() {
-		for {
-			for k, v := range c.assets {
-				if v.ttl < time.Now().Unix() {
-					delete(c.assets, k)
-					log.Infof("cache expired for %s", k)
-				}
-			}
-
-			time.Sleep(ttl)
-		}
-	}()
-
-	return c
-}
-
-func (c *Cache) AssetFile(name string) ([]byte, string, error) {
-	return c.RootFile(fmt.Sprintf("assets%s", name))
-}
-
-func (c *Cache) RootFile(name string) ([]byte, string, error) {
-	item, ok := c.assets[name]
-	if !ok {
-		data, err := c.fs.ReadFile(fmt.Sprintf("dist/%s", name))
-		if err != nil {
-			return nil, "", err
-		}
-
-		item = Item{
-			name: name,
-			data: data,
-			mime: c.geMimeType(data, name),
-			ttl:  time.Now().Add(c.ttl).Unix(),
-		}
-
-		c.assets[name] = item
-		log.Infof("cache miss for %s", name)
-	}
-
-	return item.data, item.mime, nil
-}
-
-// workarounds for mime types http.DetectContentType() doesn't detect
-func (c *Cache) geMimeType(data []byte, name string) string {
-	switch {
-	case strings.HasSuffix(name, ".css"):
-		return "text/css; charset=utf-8"
-	case strings.HasSuffix(name, ".html"):
-		return "text/html; charset=utf-8"
-	case strings.HasSuffix(name, ".js"):
-		return "application/javascript; charset=utf-8"
-	case strings.HasSuffix(name, ".svg"):
-		return "image/svg+xml; charset=utf-8"
-	case strings.HasSuffix(name, ".ico"):
-		return "image/x-icon"
-	default:
-		return http.DetectContentType(data)
-	}
-}
 
 //	type UI struct {
 //		r *mux.Router
@@ -114,6 +32,7 @@ func (c *Cache) geMimeType(data []byte, name string) string {
 //		u.r.PathPrefix("/assets/").Handler(http.StripPrefix(fmt.Sprintf("%s/assets/", baseDir), http.FileServer(http.FS(assetsFiles))))
 //		u.r.Handle("/", http.StripPrefix(baseDir, http.FileServer(http.FS(assetsFiles))))
 //	}
+
 var mon *Monitoring
 
 func init() {
@@ -128,7 +47,7 @@ type (
 		router *gin.Engine
 		ctx    context.Context
 		db     *store.Store
-		cache  *Cache
+		cache  *cache.Cache
 	}
 )
 
@@ -139,7 +58,7 @@ func newMonitoring() *Monitoring {
 		port:   ":8080",
 		ctx:    context.Background(),
 		router: gin.New(),
-		cache:  NewCacheFS(24 * time.Hour),
+		cache:  cache.NewCacheFS(assetsFiles, 24*time.Hour),
 	}
 
 	var err error
@@ -249,57 +168,73 @@ func basicAuth() gin.HandlerFunc {
 func (m *Monitoring) routes() {
 	v1 := m.router.Group("/api/v1", basicAuth())
 
-	{
-		v1.GET("/health", func(c *gin.Context) {
-			c.JSON(http.StatusOK, gin.H{"message": "GET API endpoint hit [health]"})
-		})
+	v1.GET("/health", m.healthHandler)
+	v1.GET("/data", m.dataHandler)
+	v1.GET("/data/:id", m.dataIDHandler)
+	v1.POST("/data", m.postDataHandler)
 
-		v1.GET("/data", func(c *gin.Context) {
-			c.JSON(http.StatusOK, gin.H{"message": "GET API endpoint hit [data]"})
-		})
+	m.router.GET("/", m.rootHandler)
+	m.router.GET("/favicon.ico", m.faviconHandler)
+	m.router.GET("/vite.svg", m.svgHandler)
+	m.router.GET("/assets/*filepath", m.assetsHandler)
+}
 
-		v1.GET("/data/:id", func(c *gin.Context) {
-			id := c.Param("id")
-			c.JSON(http.StatusOK, gin.H{"message": fmt.Sprintf("GET API endpoint hit [data/%s]", id)})
-		})
+func (m *Monitoring) healthHandler(c *gin.Context) {
+	c.JSON(http.StatusOK, gin.H{"message": "GET API endpoint hit [health]"})
+}
 
-		v1.POST("/data", func(c *gin.Context) {
-			c.JSON(http.StatusOK, gin.H{"message": "POST API endpoint hit [data]"})
-		})
+func (m *Monitoring) dataHandler(c *gin.Context) {
+	c.JSON(http.StatusOK, gin.H{"message": "GET API endpoint hit [data]"})
+}
+
+func (m *Monitoring) dataIDHandler(c *gin.Context) {
+	id := c.Param("id")
+	c.JSON(http.StatusOK, gin.H{"message": fmt.Sprintf("GET API endpoint hit [data/%s]", id)})
+}
+
+func (m *Monitoring) postDataHandler(c *gin.Context) {
+	c.JSON(http.StatusOK, gin.H{"message": "POST API endpoint hit [data]"})
+}
+
+func (m *Monitoring) assetsHandler(c *gin.Context) {
+	path := c.Param("filepath")
+	data, mime, err := m.cache.AssetFile(path)
+	if err != nil {
+		c.String(http.StatusNotFound, "Resource file not found")
+		return
 	}
 
-	{
-		m.router.GET("/assets/*filepath", func(c *gin.Context) {
-			path := c.Param("filepath")
-			data, mime, err := m.cache.AssetFile(path)
-			if err != nil {
-				c.String(http.StatusNotFound, "Resource file not found")
-				return
-			}
+	c.Data(http.StatusOK, mime, data)
+}
 
-			c.Data(http.StatusOK, mime, data)
-		})
-
-		m.router.GET("/", func(c *gin.Context) {
-			data, mime, err := m.cache.RootFile("index.html")
-			if err != nil {
-				c.String(http.StatusNotFound, "File not found")
-				return
-			}
-
-			c.Data(http.StatusOK, mime, data)
-		})
-
-		m.router.GET("/favicon.ico", func(c *gin.Context) {
-			data, mime, err := m.cache.RootFile("favicon.ico")
-			if err != nil {
-				c.String(http.StatusNotFound, "favicon file not found")
-				return
-			}
-
-			c.Data(http.StatusOK, mime, data)
-		})
+func (m *Monitoring) rootHandler(c *gin.Context) {
+	data, mime, err := m.cache.RootFile("index.html")
+	if err != nil {
+		c.String(http.StatusNotFound, "File not found")
+		return
 	}
+
+	c.Data(http.StatusOK, mime, data)
+}
+
+func (m *Monitoring) faviconHandler(c *gin.Context) {
+	data, mime, err := m.cache.RootFile("favicon.ico")
+	if err != nil {
+		c.String(http.StatusNotFound, "favicon file not found")
+		return
+	}
+
+	c.Data(http.StatusOK, mime, data)
+}
+
+func (m *Monitoring) svgHandler(c *gin.Context) {
+	data, mime, err := m.cache.RootFile("vite.svg")
+	if err != nil {
+		c.String(http.StatusNotFound, "favicon file not found")
+		return
+	}
+
+	c.Data(http.StatusOK, mime, data)
 }
 
 func (m *Monitoring) StartServer() {
