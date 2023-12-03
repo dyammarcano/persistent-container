@@ -12,12 +12,15 @@ import (
 	"fmt"
 	"github.com/caarlos0/log"
 	"github.com/gin-gonic/gin"
-	"github.com/google/uuid"
 	"net/http"
 	"path/filepath"
 	"strings"
 	"sync"
 	"time"
+)
+
+const (
+	bucketNotFound = "bucket not found"
 )
 
 //	type UI struct {
@@ -78,7 +81,7 @@ func newMonitoring() *Monitoring {
 		log.Fatal(err.Error())
 	}
 
-	m.router.Use(hacks(m.ctx)) // TODO: remove this
+	m.router.Use(hacks(m.ctx)) // for demo purposes, please don't do this in production
 	m.router.Use(gin.Recovery())
 
 	m.router.Use(gin.LoggerWithFormatter(func(param gin.LogFormatterParams) string {
@@ -136,7 +139,7 @@ func hackAction(ctx context.Context, ticker *time.Ticker, persistLogsCh chan *ht
 					//	return
 					//}
 
-					if err := mon.db.Put("requests", uuid.NewString(), data.Bytes()); err != nil {
+					if err := mon.db.Put("requests", store.GenerateKey(), data.Bytes()); err != nil {
 						log.Errorf("error putting key/value pair: %s", err.Error())
 					}
 				}
@@ -178,7 +181,7 @@ func formatBearerToken(c *gin.Context, data []byte) {
 	tokenBearer := struct {
 		Authorization string `json:"authorization"`
 	}{
-		Authorization: fmt.Sprintf("Bearer %s", data),
+		Authorization: fmt.Sprintf("%s", data),
 	}
 
 	c.JSON(http.StatusOK, tokenBearer)
@@ -277,13 +280,13 @@ func (m *Monitoring) versionHandler(c *gin.Context) {
 }
 
 func (m *Monitoring) dataHandler(c *gin.Context) {
-	bucket, ok := c.Get("bucket")
-	if !ok {
-		c.JSON(http.StatusInternalServerError, gin.H{"message": "bucket not found"})
+	bucket := c.GetString("bucket")
+	if bucket == "" {
+		c.JSON(http.StatusInternalServerError, gin.H{"message": bucketNotFound})
 		return
 	}
 
-	data, err := m.db.GetBucketKeys(bucket.(string))
+	data, err := m.db.GetBucketKeys(bucket)
 	if err != nil {
 		c.JSON(http.StatusInternalServerError, gin.H{"message": err.Error()})
 		return
@@ -299,23 +302,51 @@ func (m *Monitoring) dataIDHandler(c *gin.Context) {
 		return
 	}
 
-	bucket, ok := c.Get("bucket")
-	if !ok {
-		c.JSON(http.StatusInternalServerError, gin.H{"message": "bucket not found"})
+	bucket := c.GetString("bucket")
+	if bucket == "" {
+		c.JSON(http.StatusInternalServerError, gin.H{"message": bucketNotFound})
 		return
 	}
 
-	result, err := m.db.Get(bucket.(string), id)
-	if err != nil {
+	var data any
+	if err := m.db.GetObject(bucket, id, data); err != nil {
 		c.JSON(http.StatusInternalServerError, gin.H{"message": err.Error()})
 		return
 	}
 
-	c.JSON(http.StatusOK, gin.H{"result": result})
+	if data == nil {
+		c.JSON(http.StatusNotFound, gin.H{"message": "bucket empty"})
+		return
+	}
+
+	c.JSON(http.StatusOK, data)
 }
 
 func (m *Monitoring) postDataHandler(c *gin.Context) {
-	c.JSON(http.StatusOK, gin.H{"message": "POST API endpoint hit [data]"})
+	if c.Request.Header.Get("Content-Type") != "application/json" {
+		c.JSON(http.StatusBadRequest, gin.H{"message": "invalid content type"})
+		return
+	}
+
+	var data any
+	if err := c.ShouldBindJSON(&data); err != nil {
+		c.JSON(http.StatusBadRequest, gin.H{"message": err.Error()})
+		return
+	}
+
+	bucket := c.GetString("bucket")
+	if bucket == "" {
+		c.JSON(http.StatusInternalServerError, gin.H{"message": bucketNotFound})
+		return
+	}
+
+	id := store.GenerateKey()
+	if err := m.db.PutObject(bucket, id, data); err != nil {
+		c.JSON(http.StatusInternalServerError, gin.H{"message": err.Error()})
+		return
+	}
+
+	c.JSON(http.StatusOK, gin.H{"id": id})
 }
 
 func (m *Monitoring) assetsHandler(c *gin.Context) {
