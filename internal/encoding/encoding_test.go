@@ -1,8 +1,8 @@
 package encoding
 
 import (
+	"dataStore/internal/algorithm/cryptography"
 	"fmt"
-	"github.com/dyammarcano/secure_message/internal/algorithm/cryptography"
 	"github.com/stretchr/testify/assert"
 	"testing"
 )

@@ -1,9 +1,9 @@
 package encoding
 
 import (
+	"dataStore/internal/algorithm/compression"
+	"dataStore/internal/algorithm/cryptography"
 	"github.com/dyammarcano/base58"
-	"github.com/dyammarcano/secure_message/internal/algorithm/compression"
-	"github.com/dyammarcano/secure_message/internal/algorithm/cryptography"
 )
 
 func Serialize(message string) (string, error) {
