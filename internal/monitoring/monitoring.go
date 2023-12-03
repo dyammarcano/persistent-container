@@ -4,7 +4,7 @@ import (
 	"bytes"
 	"context"
 	"dataStore/internal/cache"
-	"dataStore/internal/monitoring/ui"
+	"dataStore/internal/monitoring/vue-project"
 	"dataStore/internal/store"
 	"fmt"
 	"github.com/caarlos0/log"
@@ -55,7 +55,7 @@ func newMonitoring() *Monitoring {
 		port:   ":8080",
 		ctx:    context.Background(),
 		router: gin.New(),
-		cache:  cache.NewCacheFS(ui.AssetsFiles, 24*time.Hour),
+		cache:  cache.NewCacheFS(vue.AssetsFiles, 24*time.Hour),
 	}
 
 	var err error
