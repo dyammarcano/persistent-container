@@ -12,6 +12,7 @@ import (
 	"fmt"
 	"github.com/caarlos0/log"
 	"github.com/gin-gonic/gin"
+	cors "github.com/rs/cors/wrapper/gin"
 	"net/http"
 	"path/filepath"
 	"strings"
@@ -69,6 +70,15 @@ func NewMonitoring(ctx context.Context, db *store.Store) *Monitoring {
 
 	m.router.Use(hacks(m.ctx)) // for demo purposes, please don't do this in production
 	m.router.Use(gin.Recovery())
+
+	//c := rsCors.Options{
+	//	AllowedOrigins:   []string{"http://localhost:5173"}, // replace specific origin with your desired origin
+	//	AllowedMethods:   []string{"GET", "POST", "PUT", "PATCH", "DELETE"},
+	//	AllowedHeaders:   []string{"Origin", "Content-Type", "Accept"},
+	//	AllowCredentials: true,
+	//}
+
+	m.router.Use(cors.Default())
 
 	m.router.Use(gin.LoggerWithFormatter(func(param gin.LogFormatterParams) string {
 		return fmt.Sprintf("%s - [%s] \"%s %s %s %d %s \"%s\" %s\"\n",

@@ -11,6 +11,7 @@ require (
 	github.com/google/uuid v1.4.0
 	github.com/gorilla/mux v1.8.1
 	github.com/patrickmn/go-cache v2.1.0+incompatible
+	github.com/rs/cors/wrapper/gin v0.0.0-20231013084403-73f81b45a644
 	github.com/stretchr/testify v1.8.4
 	go.etcd.io/bbolt v1.3.8
 )
@@ -53,6 +54,7 @@ require (
 	github.com/pjbgf/sha1cd v0.3.0 // indirect
 	github.com/pmezard/go-difflib v1.0.0 // indirect
 	github.com/rivo/uniseg v0.4.2 // indirect
+	github.com/rs/cors v1.8.1 // indirect
 	github.com/sergi/go-diff v1.1.0 // indirect
 	github.com/skeema/knownhosts v1.2.1 // indirect
 	github.com/twitchyliquid64/golang-asm v0.15.1 // indirect
