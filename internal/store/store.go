@@ -3,6 +3,7 @@ package store
 import (
 	"context"
 	"encoding/json"
+	"fmt"
 	"github.com/google/uuid"
 	bolt "go.etcd.io/bbolt"
 	"sync"
@@ -18,7 +19,7 @@ type (
 	}
 )
 
-func NewPersistence(ctx context.Context, path string) (*Store, error) {
+func NewStore(ctx context.Context, path string) (*Store, error) {
 	db, err := bolt.Open(path, 0600, nil)
 	if err != nil {
 		return nil, err
@@ -91,11 +92,21 @@ func (p *Store) PutBatch(bucketName string, key string, values [][]byte) error {
 	})
 }
 
+func (p *Store) PutObject(bucketName string, key string, v any) error {
+	data, err := json.Marshal(v)
+	if err != nil {
+		return err
+	}
+
+	return p.Put(bucketName, key, data)
+}
+
 func (p *Store) Get(bucketName string, key string) ([]byte, error) {
 	var value []byte
 	err := p.View(func(tx *bolt.Tx) error {
 		bucket := tx.Bucket([]byte(bucketName))
 		if bucket == nil {
+			value = []byte{}
 			return nil
 		}
 		value = bucket.Get([]byte(key))
@@ -160,18 +171,23 @@ func (p *Store) GetBucketKeysValues(bucketName string) ([][]byte, [][]byte, erro
 	return keys, values, err
 }
 
-func (p *Store) SerializeObject(obj any) ([]byte, error) {
-	return json.Marshal(obj)
+func (p *Store) GetObject(bucketName string, key string) (any, error) {
+	value, err := p.Get(bucketName, key)
+	if err != nil {
+		return nil, err
+	}
+
+	var v any
+	if err := json.Unmarshal(value, &v); err != nil {
+		return nil, fmt.Errorf("failed to decode object: %v", err)
+	}
+	return v, err
 }
 
-func (p *Store) DeserializeObject(data []byte, obj any) error {
-	return json.Unmarshal(data, obj)
+func GenerateKey() string {
+	return uuid.NewString()
 }
 
-func (p *Store) GenerateKey() string {
-	return uuid.New().String()
-}
-
-func (p *Store) GenerateKeyBytes() []byte {
-	return []byte(p.GenerateKey())
+func GenerateKeyBytes() []byte {
+	return []byte(GenerateKey())
 }

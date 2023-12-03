@@ -9,9 +9,9 @@ var ver *Version
 func init() {
 	ver = &Version{
 		Version:    "v0.0.1-dev",
-		CommitHash: "315f30c702cca9c702770c962f529fd579516286",
-		Date:       "2023-12-02T15:09:12Z",
-		Signature:  "A2iK31o9Npq1DBHQJhzRPoVUBmmjQFdEbXybqebgkddq",
+		CommitHash: "6eb437e1049a7f1fd60f0177c3fcbf8f9aaa573d",
+		Date:       "2023-12-03T01:20:59Z",
+		Signature:  "5ofg7njFDTrn9K2KfMVkg8JF8C12TU23dXMb2EZyiqPW",
 	}
 }
 

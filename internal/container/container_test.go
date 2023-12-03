@@ -15,7 +15,7 @@ type testStruct struct {
 }
 
 func TestNewContainer(t *testing.T) {
-	db, err := store.NewPersistence(context.TODO(), "testNewContainer.db")
+	db, err := store.NewStore(context.TODO(), "testNewContainer.db")
 	assert.NoErrorf(t, err, "error creating store")
 	assert.NotNil(t, db, "store is nil")
 
