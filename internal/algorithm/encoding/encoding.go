@@ -6,10 +6,11 @@ import (
 	"dataStore/internal/algorithm/cryptography"
 	"encoding/gob"
 	"github.com/dyammarcano/base58"
+	"github.com/fxamacker/cbor/v2"
 )
 
 func Serialize(message []byte) (string, error) {
-	comp, err := compression.CompressData([]byte(message))
+	comp, err := compression.CompressData(message)
 	if err != nil {
 		return "", err
 	}
@@ -22,7 +23,7 @@ func Serialize(message []byte) (string, error) {
 	return base58.StdEncoding.EncodeToString(enc), nil
 }
 
-func SerializeStruct(v any) (string, error) {
+func SerializeStructGob(v any) (string, error) {
 	var buffer bytes.Buffer
 	if err := gob.NewEncoder(&buffer).Encode(v); err != nil {
 		return "", err
@@ -31,30 +32,52 @@ func SerializeStruct(v any) (string, error) {
 	return Serialize(buffer.Bytes())
 }
 
-func DeserializeStruct(message string, v any) error {
+func SerializeStructCBOR(v any) (string, error) {
+	data, err := cbor.Marshal(v)
+	if err != nil {
+		return "", err
+	}
+
+	return Serialize(data)
+}
+
+func DeserializeStructGob(message string, v any) error {
 	dec, err := Deserialize(message)
 	if err != nil {
 		return err
 	}
 
-	return gob.NewDecoder(bytes.NewReader([]byte(dec))).Decode(v)
+	return gob.NewDecoder(bytes.NewReader(dec)).Decode(v)
 }
 
-func Deserialize(message string) (string, error) {
+func DeserializeStructCBOR(message string, v any) error {
+	data, err := Deserialize(message)
+	if err != nil {
+		return err
+	}
+
+	if err = cbor.Unmarshal(data, v); err != nil {
+		return err
+	}
+
+	return nil
+}
+
+func Deserialize(message string) ([]byte, error) {
 	dec, err := base58.StdEncoding.DecodeString(message)
 	if err != nil {
-		return "", err
+		return nil, err
 	}
 
 	dec, err = cryptography.AutoDecryptBytes(dec)
 	if err != nil {
-		return "", err
+		return nil, err
 	}
 
 	dec, err = compression.DecompressData(dec)
 	if err != nil {
-		return "", err
+		return nil, err
 	}
 
-	return string(dec), nil
+	return dec, nil
 }

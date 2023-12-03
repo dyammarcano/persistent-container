@@ -1,19 +1,29 @@
-package cache
+package cache2you
 
 import (
 	"embed"
 	"fmt"
 	"github.com/caarlos0/log"
+	"github.com/patrickmn/go-cache"
 	"net/http"
 	"strings"
 	"time"
 )
 
+const (
+	NoExpiration      time.Duration = -1
+	DefaultExpiration time.Duration = 0
+)
+
 type (
-	Cache struct {
+	FS struct {
 		assets map[string]Item
 		fs     embed.FS
 		ttl    time.Duration
+	}
+
+	Data struct {
+		cc *cache.Cache
 	}
 
 	Item struct {
@@ -24,8 +34,22 @@ type (
 	}
 )
 
-func NewCacheFS(assetsFiles embed.FS, ttl time.Duration) *Cache {
-	c := &Cache{
+func NewCacheData(defaultExpiration, cleanupInterval time.Duration) *Data {
+	return &Data{
+		cc: cache.New(defaultExpiration, cleanupInterval),
+	}
+}
+
+func (c *Data) Get(k string) (any, bool) {
+	return c.cc.Get(k)
+}
+
+func (c *Data) Set(k string, x any, d time.Duration) {
+	c.cc.Set(k, x, d)
+}
+
+func NewCacheFS(assetsFiles embed.FS, ttl time.Duration) *FS {
+	c := &FS{
 		ttl:    ttl,
 		assets: make(map[string]Item),
 		fs:     assetsFiles,
@@ -47,11 +71,11 @@ func NewCacheFS(assetsFiles embed.FS, ttl time.Duration) *Cache {
 	return c
 }
 
-func (c *Cache) AssetFile(name string) ([]byte, string, error) {
+func (c *FS) AssetFile(name string) ([]byte, string, error) {
 	return c.RootFile(fmt.Sprintf("assets%s", name))
 }
 
-func (c *Cache) RootFile(name string) ([]byte, string, error) {
+func (c *FS) RootFile(name string) ([]byte, string, error) {
 	item, ok := c.assets[name]
 	if !ok {
 		data, err := c.fs.ReadFile(fmt.Sprintf("dist/%s", name))
@@ -74,7 +98,7 @@ func (c *Cache) RootFile(name string) ([]byte, string, error) {
 }
 
 // workarounds for mime types http.DetectContentType() doesn't detect
-func (c *Cache) geMimeType(data []byte, name string) string {
+func (c *FS) geMimeType(data []byte, name string) string {
 	switch {
 	case strings.HasSuffix(name, ".css"):
 		return "text/css; charset=utf-8"

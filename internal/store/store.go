@@ -2,11 +2,13 @@ package store
 
 import (
 	"context"
+	"dataStore/internal/algorithm/compression"
 	"encoding/json"
 	"fmt"
 	"github.com/google/uuid"
 	bolt "go.etcd.io/bbolt"
 	"sync"
+	"time"
 )
 
 type (
@@ -16,6 +18,11 @@ type (
 		*bolt.DB
 		mu  sync.RWMutex
 		Ctx context.Context
+	}
+
+	WrapData struct {
+		Object    any
+		Timestamp int64
 	}
 )
 
@@ -92,15 +99,6 @@ func (p *Store) PutBatch(bucketName string, key string, values [][]byte) error {
 	})
 }
 
-func (p *Store) PutObject(bucketName string, key string, v any) error {
-	data, err := json.Marshal(v)
-	if err != nil {
-		return err
-	}
-
-	return p.Put(bucketName, key, data)
-}
-
 func (p *Store) Get(bucketName string, key string) ([]byte, error) {
 	var value []byte
 	err := p.View(func(tx *bolt.Tx) error {
@@ -171,23 +169,43 @@ func (p *Store) GetBucketKeysValues(bucketName string) ([][]byte, [][]byte, erro
 	return keys, values, err
 }
 
-func (p *Store) GetObject(bucketName string, key string) (any, error) {
+func (p *Store) PutObject(bucketName string, key string, v any) error {
+	w := &WrapData{
+		Object:    v,
+		Timestamp: time.Now().Unix(),
+	}
+
+	data, err := json.Marshal(w)
+	if err != nil {
+		return err
+	}
+
+	comp, err := compression.CompressData(data)
+	if err != nil {
+		return err
+	}
+
+	return p.Put(bucketName, key, comp)
+}
+
+func (p *Store) GetObject(bucketName string, key string) (*WrapData, error) {
 	value, err := p.Get(bucketName, key)
 	if err != nil {
 		return nil, err
 	}
 
-	var v any
-	if err := json.Unmarshal(value, &v); err != nil {
-		return nil, fmt.Errorf("failed to decode object: %v", err)
+	dec, err := compression.DecompressData(value)
+	if err != nil {
+		return nil, err
 	}
-	return v, err
+
+	var w WrapData
+	if err = json.Unmarshal(dec, &w); err != nil {
+		return nil, fmt.Errorf("failed to decode Object: %v", err)
+	}
+	return &w, err
 }
 
 func GenerateKey() string {
 	return uuid.NewString()
-}
-
-func GenerateKeyBytes() []byte {
-	return []byte(GenerateKey())
 }
