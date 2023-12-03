@@ -6,6 +6,7 @@ import (
 	"dataStore/internal/cache"
 	"dataStore/internal/monitoring/vue-project"
 	"dataStore/internal/store"
+	version "dataStore/internal/version/gen"
 	"fmt"
 	"github.com/caarlos0/log"
 	"github.com/gin-gonic/gin"
@@ -166,6 +167,7 @@ func (m *Monitoring) routes() {
 	v1 := m.router.Group("/api/v1", basicAuth())
 
 	v1.GET("/health", m.healthHandler)
+	v1.GET("/version", m.versionHandler)
 	v1.GET("/data", m.dataHandler)
 	v1.GET("/data/:id", m.dataIDHandler)
 	v1.POST("/data", m.postDataHandler)
@@ -178,6 +180,10 @@ func (m *Monitoring) routes() {
 
 func (m *Monitoring) healthHandler(c *gin.Context) {
 	c.JSON(http.StatusOK, gin.H{"message": "GET API endpoint hit [health]"})
+}
+
+func (m *Monitoring) versionHandler(c *gin.Context) {
+	c.JSON(http.StatusOK, version.GetVersion())
 }
 
 func (m *Monitoring) dataHandler(c *gin.Context) {
