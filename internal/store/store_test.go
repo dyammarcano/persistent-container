@@ -1,13 +1,14 @@
 package store
 
 import (
+	"context"
 	"fmt"
 	"github.com/stretchr/testify/assert"
 	"testing"
 )
 
 func TestNewPersistence(t *testing.T) {
-	per, err := NewStore("test.db")
+	per, err := NewStore(context.TODO(), "test.db")
 	assert.NoErrorf(t, err, "error creating store")
 	assert.NotNil(t, per, "store is nil")
 
