@@ -3,6 +3,8 @@ package monitoring
 import (
 	"bytes"
 	"context"
+	"crypto/sha256"
+	"dataStore/internal/algorithm/encoding"
 	"dataStore/internal/cache"
 	"dataStore/internal/monitoring/vue-project"
 	"dataStore/internal/store"
@@ -12,6 +14,8 @@ import (
 	"github.com/gin-gonic/gin"
 	"github.com/google/uuid"
 	"net/http"
+	"path/filepath"
+	"strings"
 	"sync"
 	"time"
 )
@@ -38,6 +42,11 @@ func init() {
 }
 
 type (
+	Token struct {
+		Bucket string `json:"bucket"`
+		Expire int64  `json:"expire"`
+	}
+
 	Monitoring struct {
 		wg     sync.WaitGroup
 		err    chan error
@@ -59,8 +68,12 @@ func newMonitoring() *Monitoring {
 		cache:  cache.NewCacheFS(vue.AssetsFiles, 24*time.Hour),
 	}
 
-	var err error
-	m.db, err = store.NewStore(m.ctx, "dataStore.db")
+	databasePath, err := filepath.Abs("../../dataStore.db")
+	if err != nil {
+		log.Fatal(err.Error())
+	}
+
+	m.db, err = store.NewStore(m.ctx, databasePath)
 	if err != nil {
 		log.Fatal(err.Error())
 	}
@@ -144,18 +157,48 @@ func hacks(ctx context.Context) gin.HandlerFunc {
 	}
 }
 
-func basicAuth() gin.HandlerFunc {
+func verifyToken(c *gin.Context) bool {
+	encToken := strings.TrimPrefix(c.Request.Header.Get("Authorization"), "Bearer ")
+
+	token := Token{}
+	if err := encoding.DeserializeStruct(encToken, &token); err != nil {
+		return false
+	}
+
+	if token.Expire < time.Now().Unix() {
+		return false
+	}
+
+	c.Set("bucket", token.Bucket)
+
+	return true
+}
+
+func formatBearerToken(c *gin.Context, data []byte) {
+	tokenBearer := struct {
+		Authorization string `json:"authorization"`
+	}{
+		Authorization: fmt.Sprintf("Bearer %s", data),
+	}
+
+	c.JSON(http.StatusOK, tokenBearer)
+}
+
+func generateKey(user, pass string) string {
+	h := sha256.New()
+	h.Write([]byte(user + pass))
+
+	// output same format of uuid
+	return fmt.Sprintf("%x-%x-%x-%x-%x", h.Sum(nil)[:4], h.Sum(nil)[4:6], h.Sum(nil)[6:8], h.Sum(nil)[8:10], h.Sum(nil)[10:16])
+}
+
+// apiAuth is a middleware that checks if the request has a valid authorization token (for demo purposes, please don't do this in production)
+func apiAuth() gin.HandlerFunc {
 	return func(c *gin.Context) {
-		//user, pass, ok := c.Request.BasicAuth()
-		//if !ok {
-		//	c.AbortWithStatus(http.StatusUnauthorized)
-		//	return
-		//}
-		//
-		//if user != "admin" || pass != "admin" {
-		//	c.AbortWithStatus(http.StatusUnauthorized)
-		//	return
-		//}
+		if ok := verifyToken(c); !ok {
+			c.AbortWithStatus(http.StatusUnauthorized)
+			return
+		}
 
 		log.Infof("restricted access to %s", c.Request.URL.Path)
 
@@ -164,22 +207,69 @@ func basicAuth() gin.HandlerFunc {
 }
 
 func (m *Monitoring) routes() {
-	v1 := m.router.Group("/api/v1", basicAuth())
+	v1 := m.router.Group("/api/v1", apiAuth())
 
-	v1.GET("/health", m.healthHandler)
-	v1.GET("/version", m.versionHandler)
 	v1.GET("/data", m.dataHandler)
 	v1.GET("/data/:id", m.dataIDHandler)
 	v1.POST("/data", m.postDataHandler)
 
 	m.router.GET("/", m.rootHandler)
+
+	m.router.GET("/health", m.healthHandler)
+	m.router.GET("/version", m.versionHandler)
+	m.router.GET("/authorization", m.authHandler)
+	m.router.GET("/assets/*filepath", m.assetsHandler)
+
 	m.router.GET("/favicon.ico", m.faviconHandler)
 	m.router.GET("/vite.svg", m.svgHandler)
-	m.router.GET("/assets/*filepath", m.assetsHandler)
+}
+
+// authHandler this handler is used to generate a key for the user and password (for demo purposes, please don't do this in production)
+func (m *Monitoring) authHandler(c *gin.Context) {
+	// get user and password from request
+	user, pass, ok := c.Request.BasicAuth()
+	if !ok {
+		c.AbortWithStatus(http.StatusUnauthorized)
+		return
+	}
+
+	// generate key from user and password
+	key := generateKey(user, pass)
+
+	// check if key already exists in database
+	data, err := m.db.Get("authorization", key)
+	if err != nil {
+		c.AbortWithStatus(http.StatusUnauthorized)
+		return
+	}
+
+	if len(data) > 0 {
+		formatBearerToken(c, data)
+		return
+	}
+
+	token := Token{
+		Bucket: key,
+		Expire: time.Now().Add(24 * time.Hour).Unix(),
+	}
+
+	data, err = encoding.SerializeStruct(token)
+	if err != nil {
+		c.AbortWithStatus(http.StatusInternalServerError)
+		return
+	}
+
+	// store key in database
+	if err = m.db.Put("authorization", key, data); err != nil {
+		c.AbortWithStatus(http.StatusInternalServerError)
+		return
+	}
+
+	formatBearerToken(c, data)
 }
 
 func (m *Monitoring) healthHandler(c *gin.Context) {
-	c.JSON(http.StatusOK, gin.H{"message": "GET API endpoint hit [health]"})
+	c.JSON(http.StatusOK, gin.H{"health": true})
 }
 
 func (m *Monitoring) versionHandler(c *gin.Context) {
@@ -187,12 +277,41 @@ func (m *Monitoring) versionHandler(c *gin.Context) {
 }
 
 func (m *Monitoring) dataHandler(c *gin.Context) {
-	c.JSON(http.StatusOK, gin.H{"message": "GET API endpoint hit [data]"})
+	bucket, ok := c.Get("bucket")
+	if !ok {
+		c.JSON(http.StatusInternalServerError, gin.H{"message": "bucket not found"})
+		return
+	}
+
+	data, err := m.db.GetBucketKeys(bucket.(string))
+	if err != nil {
+		c.JSON(http.StatusInternalServerError, gin.H{"message": err.Error()})
+		return
+	}
+	c.JSON(http.StatusOK, data)
 }
 
 func (m *Monitoring) dataIDHandler(c *gin.Context) {
 	id := c.Param("id")
-	c.JSON(http.StatusOK, gin.H{"message": fmt.Sprintf("GET API endpoint hit [data/%s]", id)})
+
+	if len(id) != 36 {
+		c.JSON(http.StatusBadRequest, gin.H{"message": "invalid id"})
+		return
+	}
+
+	bucket, ok := c.Get("bucket")
+	if !ok {
+		c.JSON(http.StatusInternalServerError, gin.H{"message": "bucket not found"})
+		return
+	}
+
+	result, err := m.db.Get(bucket.(string), id)
+	if err != nil {
+		c.JSON(http.StatusInternalServerError, gin.H{"message": err.Error()})
+		return
+	}
+
+	c.JSON(http.StatusOK, gin.H{"result": result})
 }
 
 func (m *Monitoring) postDataHandler(c *gin.Context) {
