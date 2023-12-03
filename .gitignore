@@ -123,3 +123,4 @@ fabric.properties
 *.styl.map
 *.pcss
 *.pcss.map
+/internal/monitoring/ui/node_modules/

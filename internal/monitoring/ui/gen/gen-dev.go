@@ -28,7 +28,5 @@ func main() {
 		log.Fatal(err.Error())
 	}
 
-	//vite build --mode production
-
 	log.Info("project built successfully")
 }

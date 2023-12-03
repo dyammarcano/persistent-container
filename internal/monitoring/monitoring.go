@@ -4,8 +4,8 @@ import (
 	"bytes"
 	"context"
 	"dataStore/internal/cache"
+	"dataStore/internal/monitoring/ui"
 	"dataStore/internal/store"
-	"embed"
 	"fmt"
 	"github.com/caarlos0/log"
 	"github.com/gin-gonic/gin"
@@ -14,9 +14,6 @@ import (
 	"sync"
 	"time"
 )
-
-//go:embed all:dist/*
-var assetsFiles embed.FS
 
 //	type UI struct {
 //		r *mux.Router
@@ -58,7 +55,7 @@ func newMonitoring() *Monitoring {
 		port:   ":8080",
 		ctx:    context.Background(),
 		router: gin.New(),
-		cache:  cache.NewCacheFS(assetsFiles, 24*time.Hour),
+		cache:  cache.NewCacheFS(ui.AssetsFiles, 24*time.Hour),
 	}
 
 	var err error
