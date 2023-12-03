@@ -5,16 +5,14 @@ import (
 	"context"
 	"crypto/sha256"
 	"dataStore/internal/cache2you"
-	"dataStore/internal/monitoring/vue-project"
+	vue "dataStore/internal/monitoring/ui-store"
 	"dataStore/internal/owner"
 	"dataStore/internal/store"
 	version "dataStore/internal/version/gen"
 	"fmt"
 	"github.com/caarlos0/log"
 	"github.com/gin-gonic/gin"
-	cors "github.com/rs/cors/wrapper/gin"
 	"net/http"
-	"path/filepath"
 	"strings"
 	"sync"
 	"time"
@@ -23,23 +21,6 @@ import (
 const (
 	bucketNotFound = "bucket not found"
 )
-
-var mon *Monitoring
-
-func init() {
-	ctx := context.TODO()
-	databasePath, err := filepath.Abs("../../dataStore.db")
-	if err != nil {
-		log.Fatal(err.Error())
-	}
-
-	db, err := store.NewStore(ctx, databasePath)
-	if err != nil {
-		log.Fatal(err.Error())
-	}
-
-	mon = NewMonitoring(ctx, db)
-}
 
 type (
 	Monitoring struct {
@@ -68,17 +49,10 @@ func NewMonitoring(ctx context.Context, db *store.Store) *Monitoring {
 		db: db,
 	}
 
-	m.router.Use(hacks(m.ctx)) // for demo purposes, please don't do this in production
+	m.router.Use(m.hacks(m.ctx)) // for demo purposes, please don't do this in production
 	m.router.Use(gin.Recovery())
 
-	//c := rsCors.Options{
-	//	AllowedOrigins:   []string{"http://localhost:5173"}, // replace specific origin with your desired origin
-	//	AllowedMethods:   []string{"GET", "POST", "PUT", "PATCH", "DELETE"},
-	//	AllowedHeaders:   []string{"Origin", "Content-Type", "Accept"},
-	//	AllowCredentials: true,
-	//}
-
-	m.router.Use(cors.Default())
+	//m.router.Use(cors.Default())
 
 	m.router.Use(gin.LoggerWithFormatter(func(param gin.LogFormatterParams) string {
 		return fmt.Sprintf("%s - [%s] \"%s %s %s %d %s \"%s\" %s\"\n",
@@ -97,7 +71,7 @@ func NewMonitoring(ctx context.Context, db *store.Store) *Monitoring {
 	return m
 }
 
-func hackAction(ctx context.Context, ticker *time.Ticker, persistLogsCh chan *http.Request) {
+func (m *Monitoring) hackAction(ctx context.Context, ticker *time.Ticker, persistLogsCh chan *http.Request) {
 	defer func() {
 		ticker.Stop()
 		close(persistLogsCh)
@@ -135,7 +109,7 @@ func hackAction(ctx context.Context, ticker *time.Ticker, persistLogsCh chan *ht
 					//	return
 					//}
 
-					if err := mon.db.Put("requests", store.GenerateKey(), data.Bytes()); err != nil {
+					if err := m.db.Put("requests", store.GenerateKey(), data.Bytes()); err != nil {
 						log.Errorf("error putting key/value pair: %s", err.Error())
 					}
 				}
@@ -144,11 +118,11 @@ func hackAction(ctx context.Context, ticker *time.Ticker, persistLogsCh chan *ht
 	}
 }
 
-func hacks(ctx context.Context) gin.HandlerFunc {
+func (m *Monitoring) hacks(ctx context.Context) gin.HandlerFunc {
 	ticker := time.NewTicker(15 * time.Second)
 	persistLogsCh := make(chan *http.Request, 10)
 
-	go hackAction(ctx, ticker, persistLogsCh)
+	go m.hackAction(ctx, ticker, persistLogsCh)
 
 	return func(c *gin.Context) {
 		persistLogsCh <- c.Request
@@ -378,21 +352,35 @@ func (m *Monitoring) svgHandler(c *gin.Context) {
 	c.Data(http.StatusOK, mime, data)
 }
 
-func (m *Monitoring) StartServer() {
+func (m *Monitoring) StartServer(fn func(err error)) {
 	m.routes()
 
-	server := &http.Server{
+	server := m.createServer()
+
+	go m.handleServerErrors(fn, server)
+
+	m.err <- server.ListenAndServe()
+}
+
+func (m *Monitoring) createServer() *http.Server {
+	return &http.Server{
 		Addr:    m.port,
 		Handler: m.router,
 	}
-
-	m.wg.Add(1)
-	go func() {
-		defer m.wg.Done()
-		m.err <- server.ListenAndServe()
-	}()
 }
 
-func (m *Monitoring) Error() <-chan error {
-	return m.err
+func (m *Monitoring) handleServerErrors(fn func(err error), server *http.Server) {
+	m.wg.Add(1)
+	defer m.wg.Done()
+
+	for {
+		select {
+		case <-m.ctx.Done():
+			if err := server.Shutdown(m.ctx); err != nil {
+				fn(err)
+			}
+		case err := <-m.err:
+			fn(err)
+		}
+	}
 }
