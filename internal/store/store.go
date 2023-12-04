@@ -20,6 +20,10 @@ type (
 		Ctx context.Context
 	}
 
+	Key struct {
+		Key string `json:"id"`
+	}
+
 	WrapData struct {
 		Object    any
 		Timestamp int64
@@ -122,15 +126,15 @@ func (p *Store) GetBucket(bucketName string) (*bolt.Bucket, error) {
 	return bucket, err
 }
 
-func (p *Store) GetBucketKeys(bucketName string) ([]string, error) {
-	var keys []string
+func (p *Store) GetBucketKeys(bucketName string) ([]Key, error) {
+	var keys []Key
 	err := p.View(func(tx *bolt.Tx) error {
 		bucket := tx.Bucket([]byte(bucketName))
 		if bucket == nil {
 			return nil
 		}
 		return bucket.ForEach(func(k, v []byte) error {
-			keys = append(keys, string(k))
+			keys = append(keys, Key{Key: string(k)})
 			return nil
 		})
 	})

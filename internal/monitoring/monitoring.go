@@ -8,9 +8,10 @@ import (
 	vue "dataStore/internal/monitoring/ui-store"
 	"dataStore/internal/owner"
 	"dataStore/internal/store"
-	version "dataStore/internal/version/gen"
+	"dataStore/internal/version"
 	"fmt"
 	"github.com/caarlos0/log"
+	"github.com/gin-contrib/cors"
 	"github.com/gin-gonic/gin"
 	"net/http"
 	"strings"
@@ -32,27 +33,28 @@ type (
 		db        *store.Store
 		cacheFs   *cache2you.FS
 		cacheData *cache2you.Data
-		//tokens    map[string]owner.Token
 	}
 )
 
-func NewMonitoring(ctx context.Context, db *store.Store) *Monitoring {
+func NewMonitoring(ctx context.Context, db *store.Store, port int) *Monitoring {
 	m := &Monitoring{
 		wg:        sync.WaitGroup{},
 		err:       make(chan error),
-		port:      ":8080",
+		port:      fmt.Sprintf(":%d", port),
 		ctx:       ctx,
 		router:    gin.New(),
 		cacheFs:   cache2you.NewCacheFS(vue.AssetsFiles, 24*time.Hour),
 		cacheData: cache2you.NewCacheData(5*time.Minute, 10*time.Minute),
-		//tokens:    make(map[string]owner.Token),
-		db: db,
+		db:        db,
 	}
 
 	m.router.Use(m.hacks(m.ctx)) // for demo purposes, please don't do this in production
 	m.router.Use(gin.Recovery())
 
-	//m.router.Use(cors.Default())
+	config := cors.DefaultConfig()
+	config.AllowOrigins = []string{"http://localhost:3000/"}
+
+	m.router.Use(cors.New(config))
 
 	m.router.Use(gin.LoggerWithFormatter(func(param gin.LogFormatterParams) string {
 		return fmt.Sprintf("%s - [%s] \"%s %s %s %d %s \"%s\" %s\"\n",
@@ -221,6 +223,7 @@ func (m *Monitoring) routes() {
 	v1.GET("/data", m.dataHandler)
 	v1.GET("/data/:id", m.dataIDHandler)
 	v1.POST("/data", m.postDataHandler)
+	v1.DELETE("/data/:id", m.deleteIDHandler)
 
 	m.router.GET("/", m.rootHandler)
 
@@ -260,7 +263,7 @@ func (m *Monitoring) dataIDHandler(c *gin.Context) {
 	id := c.Param("id")
 
 	if len(id) != 36 {
-		c.JSON(http.StatusBadRequest, gin.H{"message": "invalid id"})
+		c.JSON(http.StatusBadRequest, gin.H{"message": "invalid id length"})
 		return
 	}
 
@@ -282,6 +285,28 @@ func (m *Monitoring) dataIDHandler(c *gin.Context) {
 	}
 
 	c.JSON(http.StatusOK, data.Object)
+}
+
+func (m *Monitoring) deleteIDHandler(c *gin.Context) {
+	id := c.Param("id")
+
+	if len(id) != 36 {
+		c.JSON(http.StatusBadRequest, gin.H{"message": "invalid id length"})
+		return
+	}
+
+	bucket := c.GetString("bucket")
+	if bucket == "" {
+		c.JSON(http.StatusInternalServerError, gin.H{"message": bucketNotFound})
+		return
+	}
+
+	if err := m.db.DeleteKey(bucket, id); err != nil {
+		c.JSON(http.StatusInternalServerError, gin.H{"message": err.Error()})
+		return
+	}
+
+	c.Status(http.StatusNoContent)
 }
 
 func (m *Monitoring) postDataHandler(c *gin.Context) {

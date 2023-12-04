@@ -40,7 +40,10 @@ onUnmounted(() => {
                 <router-link class="nav-link" to="/">Home</router-link>
               </li>
               <li class="nav-item">
-                <router-link class="nav-link" to="/list">List</router-link>
+                <router-link class="nav-link" to="/list">List Data</router-link>
+              </li>
+              <li class="nav-item">
+                <router-link class="nav-link" to="/add">Add Data</router-link>
               </li>
               <li class="nav-item">
                 <router-link class="nav-link" to="/counter">Counter</router-link>

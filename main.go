@@ -26,7 +26,7 @@ func main() {
 		log.Fatal(err.Error())
 	}
 
-	newMonitoring := monitoring.NewMonitoring(ctx, db)
+	newMonitoring := monitoring.NewMonitoring(ctx, db, 8080)
 
 	callback := func(err error) {
 		if err != nil {
