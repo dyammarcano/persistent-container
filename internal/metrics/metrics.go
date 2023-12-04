@@ -15,12 +15,12 @@ type (
 		LastUpdate    time.Time     `json:"last_update"`
 		SystemMetrics SystemMetrics `json:"system_metrics"`
 		Iops          Iops          `json:"iops"`
+		db            *bolt.DB
 		mu            sync.RWMutex
+		ctx           context.Context
+		bucketName    []byte
 		readsCh       chan int64
 		writesCh      chan int64
-		ctx           context.Context
-		db            *bolt.DB
-		bucketName    []byte
 	}
 
 	SystemMetrics struct {
@@ -78,6 +78,35 @@ func (m *Metrics) startMonitor() {
 	ticker := time.NewTicker(time.Second * 1)
 	defer ticker.Stop()
 
+	readSavedData := func() {
+		err := m.db.View(func(tx *bolt.Tx) error {
+			bucket := tx.Bucket(m.bucketName)
+			if bucket == nil {
+				return errors.New("metrics bucket not found")
+			}
+
+			data := bucket.Get(m.bucketName)
+			if data == nil {
+				return errors.New("metrics key not found")
+			}
+
+			m.mu.Lock()
+			err := json.Unmarshal(data, m)
+			m.mu.Unlock()
+
+			if err != nil {
+				return errors.New("failed to unmarshal metrics data: " + err.Error())
+			}
+
+			return nil
+		})
+		if err != nil {
+			return
+		}
+	}
+
+	readSavedData()
+
 	for {
 		select {
 		case <-m.ctx.Done():
@@ -102,7 +131,7 @@ func (m *Metrics) resetIopsRates() {
 	}
 
 	err = m.db.Update(func(tx *bolt.Tx) error {
-		bucket, err := tx.CreateBucketIfNotExists([]byte("metrics"))
+		bucket, err := tx.CreateBucketIfNotExists(m.bucketName)
 		if err != nil {
 			return err
 		}
