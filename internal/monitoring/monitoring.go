@@ -4,6 +4,7 @@ import (
 	"bytes"
 	"context"
 	"crypto/sha256"
+	"dataStore/internal/algorithm/compression"
 	"dataStore/internal/cache2you"
 	vue "dataStore/internal/monitoring/ui-store"
 	"dataStore/internal/owner"
@@ -13,6 +14,7 @@ import (
 	"github.com/caarlos0/log"
 	"github.com/gin-contrib/cors"
 	"github.com/gin-gonic/gin"
+	"io"
 	"net/http"
 	"strings"
 	"sync"
@@ -141,18 +143,18 @@ func (m *Monitoring) authHandler(c *gin.Context) {
 	// get user and password from request
 	user, pass, ok := c.Request.BasicAuth()
 	if !ok {
-		c.AbortWithStatusJSON(http.StatusBadRequest, gin.H{"message": "user and password not found"})
+		c.AbortWithStatusJSON(http.StatusBadRequest, gin.H{"error": "user and password not found"})
 		return
 	}
 
 	if user == "" || pass == "" {
-		c.AbortWithStatusJSON(http.StatusBadRequest, gin.H{"message": "user and password not found"})
+		c.AbortWithStatusJSON(http.StatusBadRequest, gin.H{"error": "user and password not found"})
 		return
 	}
 
 	email := c.Request.Header.Get("email")
 	if !validateEmailFormat(email) {
-		c.AbortWithStatusJSON(http.StatusBadRequest, gin.H{"message": "email header not found"})
+		c.AbortWithStatusJSON(http.StatusBadRequest, gin.H{"error": "email header not found"})
 		return
 	}
 
@@ -169,13 +171,13 @@ func (m *Monitoring) authHandler(c *gin.Context) {
 
 	token, err := owner.NewToken(user, pass, email, time.Now().Add(48*time.Hour).Unix())
 	if err != nil {
-		c.AbortWithStatusJSON(http.StatusInternalServerError, gin.H{"message": err.Error()})
+		c.AbortWithStatusJSON(http.StatusInternalServerError, gin.H{"error": err.Error()})
 		return
 	}
 
 	data, err := token.Encode()
 	if err != nil {
-		c.AbortWithStatusJSON(http.StatusInternalServerError, gin.H{"message": err.Error()})
+		c.AbortWithStatusJSON(http.StatusInternalServerError, gin.H{"error": err.Error()})
 		return
 	}
 
@@ -188,6 +190,10 @@ func (m *Monitoring) authHandler(c *gin.Context) {
 func (m *Monitoring) apiAuth() gin.HandlerFunc {
 	return func(c *gin.Context) {
 		encToken := strings.TrimPrefix(c.Request.Header.Get("Authorization"), "Bearer ")
+		if encToken == "" {
+			c.AbortWithStatusJSON(http.StatusUnauthorized, gin.H{"error": "invalid_token"})
+			return
+		}
 
 		var token owner.Token
 		obj, ok := m.cacheData.Get(encToken)
@@ -202,12 +208,12 @@ func (m *Monitoring) apiAuth() gin.HandlerFunc {
 		}
 
 		if err := token.Decode(encToken); err != nil {
-			c.AbortWithStatusJSON(http.StatusUnauthorized, gin.H{"message": err.Error()})
+			c.AbortWithStatusJSON(http.StatusUnauthorized, gin.H{"error": err.Error()})
 			return
 		}
 
 		if !token.IsValid() {
-			c.AbortWithStatusJSON(http.StatusUnauthorized, gin.H{"message": "invalid token"})
+			c.AbortWithStatusJSON(http.StatusUnauthorized, gin.H{"error": "invalid token"})
 			return
 		}
 
@@ -247,13 +253,13 @@ func (m *Monitoring) versionHandler(c *gin.Context) {
 func (m *Monitoring) dataHandler(c *gin.Context) {
 	bucket := c.GetString("bucket")
 	if bucket == "" {
-		c.JSON(http.StatusInternalServerError, gin.H{"message": bucketNotFound})
+		c.JSON(http.StatusInternalServerError, gin.H{"error": bucketNotFound})
 		return
 	}
 
 	data, err := m.db.GetBucketKeys(bucket)
 	if err != nil {
-		c.JSON(http.StatusInternalServerError, gin.H{"message": err.Error()})
+		c.JSON(http.StatusInternalServerError, gin.H{"error": err.Error()})
 		return
 	}
 	c.JSON(http.StatusOK, data)
@@ -263,46 +269,52 @@ func (m *Monitoring) dataIDHandler(c *gin.Context) {
 	id := c.Param("id")
 
 	if len(id) != 36 {
-		c.JSON(http.StatusBadRequest, gin.H{"message": "invalid id length"})
+		c.JSON(http.StatusBadRequest, gin.H{"error": "invalid id length"})
 		return
 	}
 
 	bucket := c.GetString("bucket")
 	if bucket == "" {
-		c.JSON(http.StatusInternalServerError, gin.H{"message": bucketNotFound})
+		c.JSON(http.StatusInternalServerError, gin.H{"error": bucketNotFound})
 		return
 	}
 
-	data, err := m.db.GetObject(bucket, id)
+	data, err := m.db.Get(bucket, id)
 	if err != nil {
-		c.JSON(http.StatusInternalServerError, gin.H{"message": err.Error()})
+		c.JSON(http.StatusInternalServerError, gin.H{"error": err.Error()})
 		return
 	}
 
-	if data.Object == nil {
-		c.JSON(http.StatusNotFound, gin.H{"message": "bucket empty"})
+	dec, err := compression.DecompressData(data)
+	if err != nil {
+		c.JSON(http.StatusInternalServerError, gin.H{"error": err.Error()})
 		return
 	}
 
-	c.JSON(http.StatusOK, data.Object)
+	if dec == nil {
+		c.JSON(http.StatusNotFound, gin.H{"error": "bucket empty"})
+		return
+	}
+
+	c.JSON(http.StatusOK, gin.H{"data": string(dec)})
 }
 
 func (m *Monitoring) deleteIDHandler(c *gin.Context) {
 	id := c.Param("id")
 
 	if len(id) != 36 {
-		c.JSON(http.StatusBadRequest, gin.H{"message": "invalid id length"})
+		c.JSON(http.StatusBadRequest, gin.H{"error": "invalid id length"})
 		return
 	}
 
 	bucket := c.GetString("bucket")
 	if bucket == "" {
-		c.JSON(http.StatusInternalServerError, gin.H{"message": bucketNotFound})
+		c.JSON(http.StatusInternalServerError, gin.H{"error": bucketNotFound})
 		return
 	}
 
 	if err := m.db.DeleteKey(bucket, id); err != nil {
-		c.JSON(http.StatusInternalServerError, gin.H{"message": err.Error()})
+		c.JSON(http.StatusInternalServerError, gin.H{"error": err.Error()})
 		return
 	}
 
@@ -310,26 +322,27 @@ func (m *Monitoring) deleteIDHandler(c *gin.Context) {
 }
 
 func (m *Monitoring) postDataHandler(c *gin.Context) {
-	if c.Request.Header.Get("Content-Type") != "application/json" {
-		c.JSON(http.StatusBadRequest, gin.H{"message": "invalid content type"})
+	body, err := io.ReadAll(c.Request.Body)
+	if err != nil {
+		c.JSON(http.StatusBadRequest, gin.H{"error": err.Error()})
 		return
 	}
 
-	var data any
-	if err := c.ShouldBindJSON(&data); err != nil {
-		c.JSON(http.StatusBadRequest, gin.H{"message": err.Error()})
+	comp, err := compression.CompressData(body)
+	if err != nil {
+		c.JSON(http.StatusInternalServerError, gin.H{"error": err.Error()})
 		return
 	}
 
 	bucket := c.GetString("bucket")
 	if bucket == "" {
-		c.JSON(http.StatusInternalServerError, gin.H{"message": bucketNotFound})
+		c.JSON(http.StatusInternalServerError, gin.H{"error": bucketNotFound})
 		return
 	}
 
 	id := store.GenerateKey()
-	if err := m.db.PutObject(bucket, id, data); err != nil {
-		c.JSON(http.StatusInternalServerError, gin.H{"message": err.Error()})
+	if err = m.db.Put(bucket, id, comp); err != nil {
+		c.JSON(http.StatusInternalServerError, gin.H{"error": err.Error()})
 		return
 	}
 
