@@ -11,7 +11,6 @@ require (
 	github.com/go-git/go-git/v5 v5.10.1
 	github.com/google/uuid v1.4.0
 	github.com/patrickmn/go-cache v2.1.0+incompatible
-	github.com/rs/cors v1.8.1
 	github.com/stretchr/testify v1.8.4
 	go.etcd.io/bbolt v1.3.8
 )

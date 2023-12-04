@@ -226,7 +226,7 @@ func (m *Monitoring) routes() {
 	v1.DELETE("/data/:id", m.deleteIDHandler)
 
 	m.router.GET("/", m.rootHandler)
-
+	m.router.GET("/metrics", m.metricsHandler)
 	m.router.GET("/health", m.healthHandler)
 	m.router.GET("/version", m.versionHandler)
 	m.router.GET("/authorization", m.authHandler)
@@ -355,6 +355,10 @@ func (m *Monitoring) rootHandler(c *gin.Context) {
 	}
 
 	c.Data(http.StatusOK, mime, data)
+}
+
+func (m *Monitoring) metricsHandler(c *gin.Context) {
+	c.JSON(http.StatusOK, m.db.GetMetrics())
 }
 
 func (m *Monitoring) faviconHandler(c *gin.Context) {

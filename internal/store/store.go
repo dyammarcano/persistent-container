@@ -3,6 +3,7 @@ package store
 import (
 	"context"
 	"dataStore/internal/algorithm/compression"
+	"dataStore/internal/metrics"
 	"encoding/json"
 	"fmt"
 	"github.com/google/uuid"
@@ -16,8 +17,9 @@ type (
 
 	Store struct {
 		*bolt.DB
-		mu  sync.RWMutex
-		Ctx context.Context
+		mu      sync.RWMutex
+		Ctx     context.Context
+		metrics *metrics.Metrics
 	}
 
 	Key struct {
@@ -36,11 +38,26 @@ func NewStore(ctx context.Context, path string) (*Store, error) {
 		return nil, err
 	}
 
-	return &Store{
+	s := &Store{
 		DB:  db,
-		mu:  sync.RWMutex{},
 		Ctx: ctx,
-	}, nil
+		mu:  sync.RWMutex{},
+	}
+
+	s.metrics = metrics.NewMetrics(ctx, db)
+
+	return s, nil
+}
+
+func (p *Store) GetMetrics() *metrics.Metrics {
+	p.mu.RLock()
+	defer p.mu.RUnlock()
+
+	getMetrics, err := p.metrics.GetMetrics()
+	if err != nil {
+		return nil
+	}
+	return getMetrics
 }
 
 func (p *Store) Close() error {
@@ -51,14 +68,26 @@ func (p *Store) Update(fn performAction) error {
 	p.mu.Lock()
 	defer p.mu.Unlock()
 
+	p.metrics.LastUpdate = time.Now()
+	p.metrics.Iops.TotalWrites++
+
 	return p.DB.Update(fn)
 }
 
 func (p *Store) View(fn performAction) error {
+	p.mu.Lock()
+	defer p.mu.Unlock()
+
+	p.metrics.LastUpdate = time.Now()
+	p.metrics.Iops.TotalReads++
+
 	return p.DB.View(fn)
 }
 
 func (p *Store) Batch(fn performAction) error {
+	p.mu.Lock()
+	defer p.mu.Unlock()
+
 	return p.DB.Batch(fn)
 }
 
@@ -84,6 +113,9 @@ func (p *Store) Put(bucketName string, key string, value []byte) error {
 		if err != nil {
 			return err
 		}
+
+		p.metrics.Iops.TotalWriteBytes += int64(len(value))
+
 		return bucket.Put([]byte(key), value)
 	})
 }
