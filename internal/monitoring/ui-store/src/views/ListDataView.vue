@@ -35,16 +35,26 @@ const removeItem = async (id: string) => {
   items.value = items.value.filter(item => item.id !== id);
 };
 
-let deleteModal;
-let viewModal;
+let deleteModal: Modal;
+let viewModal: Modal;
+let deleteModalElement: HTMLElement | null;
+let viewModalElement: HTMLElement | null;
 
 onMounted(() => {
   setAuthorizationToken();
   fetchItems();
 
-  // initialize your modal
-  deleteModal = new Modal(document.getElementById('deleteModal'));
-  viewModal = new Modal(document.getElementById('viewModal'));
+  deleteModalElement = document.getElementById('deleteModal');
+  viewModalElement = document.getElementById('viewModal');
+
+  // Make sure elements are not null before initializing modals
+  if (deleteModalElement !== null) {
+    deleteModal = new Modal(deleteModalElement);
+  }
+
+  if (viewModalElement !== null) {
+    viewModal = new Modal(viewModalElement);
+  }
 });
 
 const prepareDelete = (id: string) => {
