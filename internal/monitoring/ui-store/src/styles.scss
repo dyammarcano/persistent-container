@@ -1,0 +1,49 @@
+@import "bootstrap";
+@import "font-awesome";
+
+.hero {
+  text-align: center;
+  margin-bottom: 20px;
+}
+
+.clock {
+  position: fixed;
+  top: 10px;
+  right: 10px;
+  font-size: 24px;
+}
+
+.counter {
+  display: flex;
+  justify-content: center;
+  align-items: center;
+  margin-bottom: 20px;
+}
+
+#toast {
+  position: fixed;
+  top: 0;
+  right: 0;
+  margin-top: 40px;
+  margin-right: 40px;
+  z-index: 1;
+}
+
+html, body, #app {
+  height: 100%;
+}
+
+#app {
+  display: flex;
+  flex-direction: column;
+}
+
+.main {
+  flex: 1;
+}
+
+.footer {
+  width: 100%;
+  position: fixed;
+  bottom: 0;
+}

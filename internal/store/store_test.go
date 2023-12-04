@@ -26,7 +26,7 @@ func TestNewPersistence(t *testing.T) {
 	data, err := per.Get(movie, key)
 	assert.NoErrorf(t, err, "error getting value from key")
 
-	fmt.Printf("data: %s\n", data)
+	fmt.Printf("Object: %s\n", data)
 
 	// batch insert
 	values := make([][]byte, 100)
@@ -43,7 +43,7 @@ func TestNewPersistence(t *testing.T) {
 	assert.NoErrorf(t, err, "error getting value from key")
 
 	for _, v := range obj {
-		fmt.Printf("data: %s\n", v)
+		fmt.Printf("Object: %s\n", v)
 	}
 }
 

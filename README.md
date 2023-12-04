@@ -1,8 +1,51 @@
 # Data Store 
 
-## Under development 
+## Under active development  -  Not ready for production
+
+## TODO
+
+- [x] Create data
+- [x] Read data
+- [x] Update data
+- [x] Delete data
+- [x] Search data
+- [ ] Sort data
+- [ ] Filter data
+- [ ] Pagination
+- [ ] Dark mode
+- [ ] Responsive design
+- [ ] Data validation
+- [ ] Data persistence
+- [ ] Data encryption
+- [ ] Data compression
+- [ ] Data backup
+- [ ] Data restore
+- [ ] Data export
+- [ ] Data import
+- [ ] Data synchronization
+- [ ] Data sharing
+- [ ] Data history
+- [ ] Data versioning
+- [ ] Data migration
+- [ ] Data replication
+- [ ] Web UI application (Vue 3)
+- [ ] Standalone application (Electron)
 
 ### Simple container struct to wrap any struct and persist it to disk as CBOR encoded data.
+
+## Prerequisites
+
+- Node.js 14.0.0 or higher
+- NPM 6.14.0 or higher
+- Golang 1.16.0 or higher
+
+## How to use
+
+1. Clone this repository
+2. Run `go generate ./...`
+3. Run `go build -o store .` or `go run .` to start the server
+4. Open `http://localhost:8090` in your browser
+5. Enjoy!
 
 ## Under the hood
 

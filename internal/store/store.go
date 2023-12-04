@@ -2,11 +2,14 @@ package store
 
 import (
 	"context"
+	"dataStore/internal/algorithm/compression"
+	"dataStore/internal/metrics"
 	"encoding/json"
 	"fmt"
 	"github.com/google/uuid"
 	bolt "go.etcd.io/bbolt"
 	"sync"
+	"time"
 )
 
 type (
@@ -14,8 +17,18 @@ type (
 
 	Store struct {
 		*bolt.DB
-		mu  sync.RWMutex
-		Ctx context.Context
+		mu      sync.RWMutex
+		Ctx     context.Context
+		metrics *metrics.Metrics
+	}
+
+	Key struct {
+		Key string `json:"id"`
+	}
+
+	WrapData struct {
+		Object    any
+		Timestamp int64
 	}
 )
 
@@ -25,11 +38,26 @@ func NewStore(ctx context.Context, path string) (*Store, error) {
 		return nil, err
 	}
 
-	return &Store{
+	s := &Store{
 		DB:  db,
-		mu:  sync.RWMutex{},
 		Ctx: ctx,
-	}, nil
+		mu:  sync.RWMutex{},
+	}
+
+	s.metrics = metrics.NewMetrics(ctx, db)
+
+	return s, nil
+}
+
+func (p *Store) GetMetrics() *metrics.Metrics {
+	p.mu.RLock()
+	defer p.mu.RUnlock()
+
+	getMetrics, err := p.metrics.GetMetrics()
+	if err != nil {
+		return nil
+	}
+	return getMetrics
 }
 
 func (p *Store) Close() error {
@@ -40,14 +68,26 @@ func (p *Store) Update(fn performAction) error {
 	p.mu.Lock()
 	defer p.mu.Unlock()
 
+	p.metrics.LastUpdate = time.Now()
+	p.metrics.Iops.TotalWrites++
+
 	return p.DB.Update(fn)
 }
 
 func (p *Store) View(fn performAction) error {
+	p.mu.Lock()
+	defer p.mu.Unlock()
+
+	p.metrics.LastUpdate = time.Now()
+	p.metrics.Iops.TotalReads++
+
 	return p.DB.View(fn)
 }
 
 func (p *Store) Batch(fn performAction) error {
+	p.mu.Lock()
+	defer p.mu.Unlock()
+
 	return p.DB.Batch(fn)
 }
 
@@ -73,6 +113,9 @@ func (p *Store) Put(bucketName string, key string, value []byte) error {
 		if err != nil {
 			return err
 		}
+
+		p.metrics.Iops.TotalWriteBytes += int64(len(value))
+
 		return bucket.Put([]byte(key), value)
 	})
 }
@@ -90,15 +133,6 @@ func (p *Store) PutBatch(bucketName string, key string, values [][]byte) error {
 		}
 		return nil
 	})
-}
-
-func (p *Store) PutObject(bucketName string, key string, v any) error {
-	data, err := json.Marshal(v)
-	if err != nil {
-		return err
-	}
-
-	return p.Put(bucketName, key, data)
 }
 
 func (p *Store) Get(bucketName string, key string) ([]byte, error) {
@@ -124,15 +158,15 @@ func (p *Store) GetBucket(bucketName string) (*bolt.Bucket, error) {
 	return bucket, err
 }
 
-func (p *Store) GetBucketKeys(bucketName string) ([]string, error) {
-	var keys []string
+func (p *Store) GetBucketKeys(bucketName string) ([]Key, error) {
+	var keys []Key
 	err := p.View(func(tx *bolt.Tx) error {
 		bucket := tx.Bucket([]byte(bucketName))
 		if bucket == nil {
 			return nil
 		}
 		return bucket.ForEach(func(k, v []byte) error {
-			keys = append(keys, string(k))
+			keys = append(keys, Key{Key: string(k)})
 			return nil
 		})
 	})
@@ -171,23 +205,43 @@ func (p *Store) GetBucketKeysValues(bucketName string) ([][]byte, [][]byte, erro
 	return keys, values, err
 }
 
-func (p *Store) GetObject(bucketName string, key string) (any, error) {
+func (p *Store) PutObject(bucketName string, key string, v any) error {
+	w := &WrapData{
+		Object:    v,
+		Timestamp: time.Now().Unix(),
+	}
+
+	data, err := json.Marshal(w)
+	if err != nil {
+		return err
+	}
+
+	comp, err := compression.CompressData(data)
+	if err != nil {
+		return err
+	}
+
+	return p.Put(bucketName, key, comp)
+}
+
+func (p *Store) GetObject(bucketName string, key string) (*WrapData, error) {
 	value, err := p.Get(bucketName, key)
 	if err != nil {
 		return nil, err
 	}
 
-	var v any
-	if err := json.Unmarshal(value, &v); err != nil {
-		return nil, fmt.Errorf("failed to decode object: %v", err)
+	dec, err := compression.DecompressData(value)
+	if err != nil {
+		return nil, err
 	}
-	return v, err
+
+	var w WrapData
+	if err = json.Unmarshal(dec, &w); err != nil {
+		return nil, fmt.Errorf("failed to decode Object: %v", err)
+	}
+	return &w, err
 }
 
 func GenerateKey() string {
 	return uuid.NewString()
-}
-
-func GenerateKeyBytes() []byte {
-	return []byte(GenerateKey())
 }

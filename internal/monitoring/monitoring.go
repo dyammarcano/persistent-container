@@ -4,16 +4,16 @@ import (
 	"bytes"
 	"context"
 	"crypto/sha256"
-	"dataStore/internal/algorithm/encoding"
-	"dataStore/internal/cache"
-	"dataStore/internal/monitoring/vue-project"
+	"dataStore/internal/cache2you"
+	vue "dataStore/internal/monitoring/ui-store"
+	"dataStore/internal/owner"
 	"dataStore/internal/store"
-	version "dataStore/internal/version/gen"
+	"dataStore/internal/version"
 	"fmt"
 	"github.com/caarlos0/log"
+	"github.com/gin-contrib/cors"
 	"github.com/gin-gonic/gin"
 	"net/http"
-	"path/filepath"
 	"strings"
 	"sync"
 	"time"
@@ -23,68 +23,38 @@ const (
 	bucketNotFound = "bucket not found"
 )
 
-//	type UI struct {
-//		r *mux.Router
-//	}
-//
-//	func NewUI(router *mux.Router) *UI {
-//		return &UI{
-//			r: router,
-//		}
-//	}
-//
-//	func (u *UI) AddRoute() {
-//		u.r.PathPrefix("/assets/").Handler(http.StripPrefix(fmt.Sprintf("%s/assets/", baseDir), http.FileServer(http.FS(assetsFiles))))
-//		u.r.Handle("/", http.StripPrefix(baseDir, http.FileServer(http.FS(assetsFiles))))
-//	}
-
-var mon *Monitoring
-
-func init() {
-	mon = newMonitoring()
-}
-
 type (
-	Token struct {
-		Bucket string `json:"bucket"`
-		Expire int64  `json:"expire"`
-	}
-
 	Monitoring struct {
-		wg     sync.WaitGroup
-		err    chan error
-		port   string
-		router *gin.Engine
-		ctx    context.Context
-		db     *store.Store
-		cache  *cache.Cache
-		tokens map[string]Token
+		wg        sync.WaitGroup
+		err       chan error
+		port      string
+		router    *gin.Engine
+		ctx       context.Context
+		db        *store.Store
+		cacheFs   *cache2you.FS
+		cacheData *cache2you.Data
 	}
 )
 
-func newMonitoring() *Monitoring {
+func NewMonitoring(ctx context.Context, db *store.Store, port int) *Monitoring {
 	m := &Monitoring{
-		wg:     sync.WaitGroup{},
-		err:    make(chan error),
-		port:   ":8080",
-		ctx:    context.Background(),
-		router: gin.New(),
-		cache:  cache.NewCacheFS(vue.AssetsFiles, 24*time.Hour),
-		tokens: make(map[string]Token),
+		wg:        sync.WaitGroup{},
+		err:       make(chan error),
+		port:      fmt.Sprintf(":%d", port),
+		ctx:       ctx,
+		router:    gin.New(),
+		cacheFs:   cache2you.NewCacheFS(vue.AssetsFiles, 24*time.Hour),
+		cacheData: cache2you.NewCacheData(5*time.Minute, 10*time.Minute),
+		db:        db,
 	}
 
-	databasePath, err := filepath.Abs("../../dataStore.db")
-	if err != nil {
-		log.Fatal(err.Error())
-	}
-
-	m.db, err = store.NewStore(m.ctx, databasePath)
-	if err != nil {
-		log.Fatal(err.Error())
-	}
-
-	m.router.Use(hacks(m.ctx)) // for demo purposes, please don't do this in production
+	m.router.Use(m.hacks(m.ctx)) // for demo purposes, please don't do this in production
 	m.router.Use(gin.Recovery())
+
+	config := cors.DefaultConfig()
+	config.AllowOrigins = []string{"http://localhost:3000/"}
+
+	m.router.Use(cors.New(config))
 
 	m.router.Use(gin.LoggerWithFormatter(func(param gin.LogFormatterParams) string {
 		return fmt.Sprintf("%s - [%s] \"%s %s %s %d %s \"%s\" %s\"\n",
@@ -103,7 +73,7 @@ func newMonitoring() *Monitoring {
 	return m
 }
 
-func hackAction(ctx context.Context, ticker *time.Ticker, persistLogsCh chan *http.Request) {
+func (m *Monitoring) hackAction(ctx context.Context, ticker *time.Ticker, persistLogsCh chan *http.Request) {
 	defer func() {
 		ticker.Stop()
 		close(persistLogsCh)
@@ -141,7 +111,7 @@ func hackAction(ctx context.Context, ticker *time.Ticker, persistLogsCh chan *ht
 					//	return
 					//}
 
-					if err := mon.db.Put("requests", store.GenerateKey(), data.Bytes()); err != nil {
+					if err := m.db.Put("requests", store.GenerateKey(), data.Bytes()); err != nil {
 						log.Errorf("error putting key/value pair: %s", err.Error())
 					}
 				}
@@ -150,11 +120,11 @@ func hackAction(ctx context.Context, ticker *time.Ticker, persistLogsCh chan *ht
 	}
 }
 
-func hacks(ctx context.Context) gin.HandlerFunc {
+func (m *Monitoring) hacks(ctx context.Context) gin.HandlerFunc {
 	ticker := time.NewTicker(15 * time.Second)
 	persistLogsCh := make(chan *http.Request, 10)
 
-	go hackAction(ctx, ticker, persistLogsCh)
+	go m.hackAction(ctx, ticker, persistLogsCh)
 
 	return func(c *gin.Context) {
 		persistLogsCh <- c.Request
@@ -162,12 +132,8 @@ func hacks(ctx context.Context) gin.HandlerFunc {
 	}
 }
 
-func generateKey(user, pass string) string {
-	h := sha256.New()
-	h.Write([]byte(user + pass))
-
-	// output same format of uuid
-	return fmt.Sprintf("%x-%x-%x-%x-%x", h.Sum(nil)[:4], h.Sum(nil)[4:6], h.Sum(nil)[6:8], h.Sum(nil)[8:10], h.Sum(nil)[10:16])
+func validateEmailFormat(email string) bool {
+	return strings.Contains(email, "@") && strings.Contains(email, ".")
 }
 
 // authHandler this handler is used to generate a key for the user and password (for demo purposes, please don't do this in production)
@@ -175,25 +141,47 @@ func (m *Monitoring) authHandler(c *gin.Context) {
 	// get user and password from request
 	user, pass, ok := c.Request.BasicAuth()
 	if !ok {
-		c.AbortWithStatus(http.StatusUnauthorized)
+		c.AbortWithStatusJSON(http.StatusBadRequest, gin.H{"message": "user and password not found"})
 		return
 	}
 
-	// generate key from user and password
-	key := generateKey(user, pass)
-
-	token := Token{
-		Bucket: key,
-		Expire: time.Now().Add(24 * time.Hour).Unix(),
+	if user == "" || pass == "" {
+		c.AbortWithStatusJSON(http.StatusBadRequest, gin.H{"message": "user and password not found"})
+		return
 	}
 
-	data, err := encoding.SerializeStruct(token)
+	email := c.Request.Header.Get("email")
+	if !validateEmailFormat(email) {
+		c.AbortWithStatusJSON(http.StatusBadRequest, gin.H{"message": "email header not found"})
+		return
+	}
+
+	h := sha256.New()
+	h.Write([]byte(user + pass))
+	h.Write([]byte(email))
+
+	key := fmt.Sprintf("%x", h.Sum(nil))
+
+	if data, ok := m.cacheData.Get(key); ok {
+		c.JSON(http.StatusCreated, gin.H{"token": data})
+		return
+	}
+
+	token, err := owner.NewToken(user, pass, email, time.Now().Add(48*time.Hour).Unix())
 	if err != nil {
-		c.AbortWithStatus(http.StatusInternalServerError)
+		c.AbortWithStatusJSON(http.StatusInternalServerError, gin.H{"message": err.Error()})
 		return
 	}
 
-	c.JSON(http.StatusOK, gin.H{"token": data})
+	data, err := token.Encode()
+	if err != nil {
+		c.AbortWithStatusJSON(http.StatusInternalServerError, gin.H{"message": err.Error()})
+		return
+	}
+
+	m.cacheData.Set(key, data, cache2you.DefaultExpiration)
+
+	c.JSON(http.StatusCreated, gin.H{"token": data})
 }
 
 // apiAuth is a middleware that checks if the request has a valid authorization token (for demo purposes, please don't do this in production)
@@ -201,29 +189,30 @@ func (m *Monitoring) apiAuth() gin.HandlerFunc {
 	return func(c *gin.Context) {
 		encToken := strings.TrimPrefix(c.Request.Header.Get("Authorization"), "Bearer ")
 
-		var token Token
-		token, ok := m.tokens[encToken]
-		if !ok {
-			if err := encoding.DeserializeStruct(encToken, &token); err != nil {
-				c.AbortWithStatus(http.StatusUnauthorized)
+		var token owner.Token
+		obj, ok := m.cacheData.Get(encToken)
+		if ok {
+			token = obj.(owner.Token)
+
+			if token.IsValid() {
+				c.Set("bucket", token.Bucket)
+				c.Next()
 				return
 			}
 		}
 
-		if token == (Token{}) {
-			c.AbortWithStatus(http.StatusUnauthorized)
+		if err := token.Decode(encToken); err != nil {
+			c.AbortWithStatusJSON(http.StatusUnauthorized, gin.H{"message": err.Error()})
 			return
 		}
 
-		if token.Expire < time.Now().Unix() {
-			c.AbortWithStatus(http.StatusUnauthorized)
+		if !token.IsValid() {
+			c.AbortWithStatusJSON(http.StatusUnauthorized, gin.H{"message": "invalid token"})
 			return
 		}
 
 		c.Set("bucket", token.Bucket)
-
-		m.tokens[encToken] = token
-
+		m.cacheData.Set(encToken, token, cache2you.NoExpiration)
 		c.Next()
 	}
 }
@@ -234,9 +223,10 @@ func (m *Monitoring) routes() {
 	v1.GET("/data", m.dataHandler)
 	v1.GET("/data/:id", m.dataIDHandler)
 	v1.POST("/data", m.postDataHandler)
+	v1.DELETE("/data/:id", m.deleteIDHandler)
 
 	m.router.GET("/", m.rootHandler)
-
+	m.router.GET("/metrics", m.metricsHandler)
 	m.router.GET("/health", m.healthHandler)
 	m.router.GET("/version", m.versionHandler)
 	m.router.GET("/authorization", m.authHandler)
@@ -273,7 +263,7 @@ func (m *Monitoring) dataIDHandler(c *gin.Context) {
 	id := c.Param("id")
 
 	if len(id) != 36 {
-		c.JSON(http.StatusBadRequest, gin.H{"message": "invalid id"})
+		c.JSON(http.StatusBadRequest, gin.H{"message": "invalid id length"})
 		return
 	}
 
@@ -289,12 +279,34 @@ func (m *Monitoring) dataIDHandler(c *gin.Context) {
 		return
 	}
 
-	if data == nil {
+	if data.Object == nil {
 		c.JSON(http.StatusNotFound, gin.H{"message": "bucket empty"})
 		return
 	}
 
-	c.JSON(http.StatusOK, data)
+	c.JSON(http.StatusOK, data.Object)
+}
+
+func (m *Monitoring) deleteIDHandler(c *gin.Context) {
+	id := c.Param("id")
+
+	if len(id) != 36 {
+		c.JSON(http.StatusBadRequest, gin.H{"message": "invalid id length"})
+		return
+	}
+
+	bucket := c.GetString("bucket")
+	if bucket == "" {
+		c.JSON(http.StatusInternalServerError, gin.H{"message": bucketNotFound})
+		return
+	}
+
+	if err := m.db.DeleteKey(bucket, id); err != nil {
+		c.JSON(http.StatusInternalServerError, gin.H{"message": err.Error()})
+		return
+	}
+
+	c.Status(http.StatusNoContent)
 }
 
 func (m *Monitoring) postDataHandler(c *gin.Context) {
@@ -326,7 +338,7 @@ func (m *Monitoring) postDataHandler(c *gin.Context) {
 
 func (m *Monitoring) assetsHandler(c *gin.Context) {
 	path := c.Param("filepath")
-	data, mime, err := m.cache.AssetFile(path)
+	data, mime, err := m.cacheFs.AssetFile(path)
 	if err != nil {
 		c.String(http.StatusNotFound, "Resource file not found")
 		return
@@ -336,7 +348,7 @@ func (m *Monitoring) assetsHandler(c *gin.Context) {
 }
 
 func (m *Monitoring) rootHandler(c *gin.Context) {
-	data, mime, err := m.cache.RootFile("index.html")
+	data, mime, err := m.cacheFs.RootFile("index.html")
 	if err != nil {
 		c.String(http.StatusNotFound, "File not found")
 		return
@@ -345,8 +357,12 @@ func (m *Monitoring) rootHandler(c *gin.Context) {
 	c.Data(http.StatusOK, mime, data)
 }
 
+func (m *Monitoring) metricsHandler(c *gin.Context) {
+	c.JSON(http.StatusOK, m.db.GetMetrics())
+}
+
 func (m *Monitoring) faviconHandler(c *gin.Context) {
-	data, mime, err := m.cache.RootFile("favicon.ico")
+	data, mime, err := m.cacheFs.RootFile("favicon.ico")
 	if err != nil {
 		c.String(http.StatusNotFound, "favicon file not found")
 		return
@@ -356,7 +372,7 @@ func (m *Monitoring) faviconHandler(c *gin.Context) {
 }
 
 func (m *Monitoring) svgHandler(c *gin.Context) {
-	data, mime, err := m.cache.RootFile("vite.svg")
+	data, mime, err := m.cacheFs.RootFile("vite.svg")
 	if err != nil {
 		c.String(http.StatusNotFound, "favicon file not found")
 		return
@@ -365,21 +381,35 @@ func (m *Monitoring) svgHandler(c *gin.Context) {
 	c.Data(http.StatusOK, mime, data)
 }
 
-func (m *Monitoring) StartServer() {
+func (m *Monitoring) StartServer(fn func(err error)) {
 	m.routes()
 
-	server := &http.Server{
+	server := m.createServer()
+
+	go m.handleServerErrors(fn, server)
+
+	m.err <- server.ListenAndServe()
+}
+
+func (m *Monitoring) createServer() *http.Server {
+	return &http.Server{
 		Addr:    m.port,
 		Handler: m.router,
 	}
-
-	m.wg.Add(1)
-	go func() {
-		defer m.wg.Done()
-		m.err <- server.ListenAndServe()
-	}()
 }
 
-func (m *Monitoring) Error() <-chan error {
-	return m.err
+func (m *Monitoring) handleServerErrors(fn func(err error), server *http.Server) {
+	m.wg.Add(1)
+	defer m.wg.Done()
+
+	for {
+		select {
+		case <-m.ctx.Done():
+			if err := server.Shutdown(m.ctx); err != nil {
+				fn(err)
+			}
+		case err := <-m.err:
+			fn(err)
+		}
+	}
 }

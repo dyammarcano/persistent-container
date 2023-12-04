@@ -146,6 +146,11 @@ func checkErr(msg interface{}) {
 }
 
 func main() {
+	//change directory
+	if err := os.Chdir(".."); err != nil {
+		panic(err)
+	}
+
 	versionFile := "version.go"
 
 	tmpl, err := template.New("versionFile").Parse(templateVersionFile)
