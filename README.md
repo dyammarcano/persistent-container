@@ -1,3 +1,4 @@
+[![Lint](https://github.com/dyammarcano/persistent-container/actions/workflows/lint.yaml/badge.svg)](https://github.com/dyammarcano/persistent-container/actions/workflows/lint.yaml)
 # Data Store
 
 ## Under active development - Not ready for production
