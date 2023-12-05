@@ -10,7 +10,7 @@ interface Item {
 const items = ref<Item[]>([]);
 
 const setAuthorizationToken = () => {
-  const token = '3B3sZjQcU2Pr8stjtBsKDtZyocA9D3DRHNbyf1y3uaUCxoEmYcBM9dph2QqLtS4YsNbbpAYik9AiU8XEVJ5Au8pVvW34nH1SjTU3XLWweJ681VVCXz65WzhZVHCEarRTm9G7mSDuQoAUiNZjdw1g9FnjW8LWeSigMKRGRDdfJgQktx8iS5WuNh15yWL7jjLXa9W3Zzj84Z9hmM31E2Fu2Prtnwx2tUZfC5CwVzzZV4ZdGSizMbUGnTMzBWh2dsT7TmzFvJZm86AD4rNhoyw7guPn4Lmm41hCb8odYr1FktqLWrkAnLAQrNh3tP9dEBoh';
+  const token = '2ybFGjUhCe49H6SQ8pXgmGrFFe2RXJoAQhF3emGA9wXJdDJyG4QM7QBnZ4F21vPtaPGaC4HzCqURGGswHpYVVdqY44b7qqYdojryYrSmtiNFHdtPkFYWTngLwyN2X3YjhWyfjivXiFenATd5YAuYBTTV86k2TgqYY7rGA9E2z23dxs4kBmi2SWAnESLPzyWtgxdjz6WhA3t5N5ZTTdrn5rBwsLXsDNNRXDRvBbFPv78vKfmJHU4bzJWS8shkKymED1ReKj8sXqsK3KqNn48MsGvDvcFYR3rcNnmeggxHFRqXX6DNsH4fm78fsh4piSoq';
   axios.interceptors.request.use((config) => {
     config.headers.Authorization = `Bearer ${token}`;
     return config;
