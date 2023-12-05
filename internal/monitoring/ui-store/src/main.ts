@@ -4,7 +4,7 @@ import './styles.scss'
 
 import 'module-alias/register';
 
-import App from './App.vue'
+import App from '@/App.vue'
 import router from './router'
 
 createApp(App)

@@ -1,5 +1,5 @@
 <!--<script setup lang="ts">-->
-<!--import router from "../router";-->
+<!--import router from "@/router";-->
 <!--import axios from "axios"; // adjust the import based on your project structure-->
 
 <!--axios.interceptors.request.use((config) => {-->

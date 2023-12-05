@@ -1,5 +1,5 @@
 <script setup lang="ts">
-import {useCounterStore} from "../stores/counterStore";
+import {useCounterStore} from "@/stores/counterStore";
 
 
 const counterStore = useCounterStore();

@@ -1,8 +1,7 @@
 <script setup lang="ts">
 import {onMounted, ref} from 'vue';
-import axios from 'axios';
 import {Modal} from 'bootstrap';
-import AxiosService from '@root/src/services/AxiosService';
+import AxiosService from '@/services/axios-service';
 
 const axiosService = AxiosService.getInstance();
 

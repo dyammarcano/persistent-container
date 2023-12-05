@@ -4,7 +4,6 @@ class AxiosService {
     private static instance: AxiosService;
 
     private constructor() {
-        // axios.defaults.baseURL = 'http://your-api-url/';
         axios.defaults.headers.post['Content-Type'] = 'application/json';
         axios.defaults.url = '/api/v1/data/';
 

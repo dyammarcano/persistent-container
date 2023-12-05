@@ -1,8 +1,8 @@
 import {createRouter, createWebHistory, RouteRecordRaw} from "vue-router";
-import HomeView from "../views/HomeView.vue";
-import ListDataView from "../views/ListDataView.vue";
-import CounterView from "../views/CounterView.vue";
-import PutDataView from "../views/PutDataView.vue";
+import HomeView from "@/components/HomeView.vue";
+import ListDataView from "@/components/ListDataView.vue";
+import CounterView from "@/components/CounterView.vue";
+import PutDataView from "@/components/PutDataView.vue";
 
 export const routes: RouteRecordRaw[] = [
     {

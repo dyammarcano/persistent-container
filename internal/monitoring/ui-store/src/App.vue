@@ -1,12 +1,12 @@
 <script setup lang="ts">
-import {useClockStore} from './stores/clockStore'
+import {useClockStore} from '@/stores/clockStore'
 import {onMounted, onUnmounted} from 'vue'
 
 const clockStore = useClockStore()
 let intervalId: number
 
 onMounted(() => {
-  intervalId = setInterval(clockStore.updateTime, 1000)
+  intervalId = <any> setInterval(clockStore.updateTime, 1000)
 })
 
 onUnmounted(() => {
