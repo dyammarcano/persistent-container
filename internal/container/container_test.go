@@ -11,6 +11,14 @@ package container
 //	assert.NoErrorf(t, err, "error creating store")
 //	assert.NotNil(t, db, "store is nil")
 //
+//	defer func() {
+//		err = db.Close()
+//		assert.NoErrorf(t, err, "error closing store")
+//
+//		err = os.Remove("testNewContainer.db")
+//		assert.NoErrorf(t, err, "error removing store")
+//	}()
+//
 //	container := NewContainer[testStruct](testStruct{
 //		Name:     "John",
 //		LastName: "Wick",

@@ -29,6 +29,7 @@ type (
 	WrapData struct {
 		Object    any
 		Timestamp int64
+		Data      []byte
 	}
 )
 
@@ -163,6 +164,7 @@ func (p *Store) GetBucketKeys(bucketName string) ([]Key, error) {
 	err := p.View(func(tx *bolt.Tx) error {
 		bucket := tx.Bucket([]byte(bucketName))
 		if bucket == nil {
+			keys = []Key{}
 			return nil
 		}
 		return bucket.ForEach(func(k, v []byte) error {
@@ -205,12 +207,7 @@ func (p *Store) GetBucketKeysValues(bucketName string) ([][]byte, [][]byte, erro
 	return keys, values, err
 }
 
-func (p *Store) PutObject(bucketName string, key string, v any) error {
-	w := &WrapData{
-		Object:    v,
-		Timestamp: time.Now().Unix(),
-	}
-
+func (p *Store) PutObject(bucketName string, key string, w *WrapData) error {
 	data, err := json.Marshal(w)
 	if err != nil {
 		return err
