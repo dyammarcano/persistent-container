@@ -2,9 +2,9 @@ package owner
 
 import (
 	"crypto/sha256"
-	"dataStore/internal/algorithm/encoding"
 	"encoding/json"
 	"fmt"
+	"github.com/dyammarcano/persistent-container/internal/algorithm/encoding"
 	"time"
 )
 

@@ -2,10 +2,10 @@ package cmd
 
 import (
 	"context"
-	"dataStore/internal/monitoring"
-	"dataStore/internal/store"
 	"fmt"
 	"github.com/caarlos0/log"
+	"github.com/dyammarcano/persistent-container/internal/monitoring"
+	"github.com/dyammarcano/persistent-container/internal/store"
 	"github.com/spf13/viper"
 	"os"
 	"path/filepath"

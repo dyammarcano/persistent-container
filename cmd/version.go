@@ -1,7 +1,7 @@
 package cmd
 
 import (
-	"dataStore/internal/version"
+	"github.com/dyammarcano/persistent-container/internal/version"
 	"github.com/spf13/cobra"
 )
 

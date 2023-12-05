@@ -1,6 +1,6 @@
 package main
 
-import "dataStore/cmd"
+import "github.com/dyammarcano/persistent-container/cmd"
 
 func main() {
 	cmd.Execute()

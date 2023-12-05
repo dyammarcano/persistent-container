@@ -2,7 +2,7 @@ package container
 
 import (
 	"context"
-	"dataStore/internal/store"
+	"github.com/dyammarcano/persistent-container/internal/store"
 	"github.com/fxamacker/cbor/v2"
 	"github.com/google/uuid"
 	"reflect"

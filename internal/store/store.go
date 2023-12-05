@@ -2,10 +2,10 @@ package store
 
 import (
 	"context"
-	"dataStore/internal/algorithm/compression"
-	"dataStore/internal/metrics"
 	"encoding/json"
 	"fmt"
+	"github.com/dyammarcano/persistent-container/internal/algorithm/compression"
+	"github.com/dyammarcano/persistent-container/internal/metrics"
 	"github.com/google/uuid"
 	bolt "go.etcd.io/bbolt"
 	"sync"

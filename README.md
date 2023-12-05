@@ -72,8 +72,8 @@ package main
 
 import (
 	"context"
-	"dataStore/internal/container"
-	"dataStore/internal/store"
+	"github.com/dyammarcano/persistent-container/internal/container"
+	"github.com/dyammarcano/persistent-container/internal/store"
 	"fmt"
 )
 

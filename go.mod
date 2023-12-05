@@ -1,4 +1,4 @@
-module dataStore
+module github.com/dyammarcano/persistent-container
 
 go 1.21
 

@@ -2,10 +2,10 @@ package encoding
 
 import (
 	"bytes"
-	"dataStore/internal/algorithm/compression"
-	"dataStore/internal/algorithm/cryptography"
 	"encoding/gob"
 	"github.com/dyammarcano/base58"
+	"github.com/dyammarcano/persistent-container/internal/algorithm/compression"
+	"github.com/dyammarcano/persistent-container/internal/algorithm/cryptography"
 	"github.com/fxamacker/cbor/v2"
 )
 
