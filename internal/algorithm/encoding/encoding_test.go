@@ -7,13 +7,13 @@ import (
 )
 
 func TestEncoding1kChars(t *testing.T) {
-	serialized, err := Serialize("hello world")
+	serialized, err := Serialize([]byte("hello world"))
 	assert.Nil(t, err)
 
 	deserialized, err := Deserialize(serialized)
 	assert.Nil(t, err)
 
-	assert.Equal(t, deserialized, "hello world")
+	assert.Equal(t, deserialized, []byte("hello world"))
 
 	fmt.Printf("serialized: %s, deserialized: %s\n", serialized, deserialized)
 }
