@@ -2,6 +2,13 @@
 import {onMounted, ref} from 'vue';
 import axios from 'axios';
 import {Modal} from 'bootstrap';
+import AxiosService from '@root/src/services/AxiosService';
+
+const axiosService = AxiosService.getInstance();
+
+const token = '2ybFGjUhCe49H6SQ8pXgmGrFFe2RXJoAQhF3emGA9wXJdDJyG4QM7QBnZ4F21vPtaPGaC4HzCqURGGswHpYVVdqY44b7qqYdojryYrSmtiNFHdtPkFYWTngLwyN2X3YjhWyfjivXiFenATd5YAuYBTTV86k2TgqYY7rGA9E2z23dxs4kBmi2SWAnESLPzyWtgxdjz6WhA3t5N5ZTTdrn5rBwsLXsDNNRXDRvBbFPv78vKfmJHU4bzJWS8shkKymED1ReKj8sXqsK3KqNn48MsGvDvcFYR3rcNnmeggxHFRqXX6DNsH4fm78fsh4piSoq';
+
+axiosService.setToken(token);
 
 interface Item {
   id: string;
@@ -9,13 +16,13 @@ interface Item {
 
 const items = ref<Item[]>([]);
 
-const setAuthorizationToken = () => {
-  const token = '2ybFGjUhCe49H6SQ8pXgmGrFFe2RXJoAQhF3emGA9wXJdDJyG4QM7QBnZ4F21vPtaPGaC4HzCqURGGswHpYVVdqY44b7qqYdojryYrSmtiNFHdtPkFYWTngLwyN2X3YjhWyfjivXiFenATd5YAuYBTTV86k2TgqYY7rGA9E2z23dxs4kBmi2SWAnESLPzyWtgxdjz6WhA3t5N5ZTTdrn5rBwsLXsDNNRXDRvBbFPv78vKfmJHU4bzJWS8shkKymED1ReKj8sXqsK3KqNn48MsGvDvcFYR3rcNnmeggxHFRqXX6DNsH4fm78fsh4piSoq';
-  axios.interceptors.request.use((config) => {
-    config.headers.Authorization = `Bearer ${token}`;
-    return config;
-  }, Promise.reject);
-};
+// const setAuthorizationToken = () => {
+//   const token = '2ybFGjUhCe49H6SQ8pXgmGrFFe2RXJoAQhF3emGA9wXJdDJyG4QM7QBnZ4F21vPtaPGaC4HzCqURGGswHpYVVdqY44b7qqYdojryYrSmtiNFHdtPkFYWTngLwyN2X3YjhWyfjivXiFenATd5YAuYBTTV86k2TgqYY7rGA9E2z23dxs4kBmi2SWAnESLPzyWtgxdjz6WhA3t5N5ZTTdrn5rBwsLXsDNNRXDRvBbFPv78vKfmJHU4bzJWS8shkKymED1ReKj8sXqsK3KqNn48MsGvDvcFYR3rcNnmeggxHFRqXX6DNsH4fm78fsh4piSoq';
+//   axios.interceptors.request.use((config) => {
+//     config.headers.Authorization = `Bearer ${token}`;
+//     return config;
+//   }, Promise.reject);
+// };
 
 const fetchItems = async () => {
   items.value = await getItem();
@@ -23,7 +30,7 @@ const fetchItems = async () => {
 
 const getItem = async () => {
   try {
-    const response = await axios.get('/api/v1/data');
+    const response = await axiosService.get('');
     return response.data;
   } catch (error) {
     console.error(error);
@@ -41,7 +48,7 @@ let deleteModalElement: HTMLElement | null;
 let viewModalElement: HTMLElement | null;
 
 onMounted(() => {
-  setAuthorizationToken();
+  // setAuthorizationToken();
   fetchItems();
 
   deleteModalElement = document.getElementById('deleteModal');
@@ -68,7 +75,7 @@ const itemToBeDeleted = ref<string>();
 const itemToBeViewed = ref<string>();
 
 const deleteItem = async (id: string) => {
-  await axios.delete(`/api/v1/data/${id}`);
+  await axiosService.delete(`${id}`);
   items.value = items.value.filter(item => {
     return item.id !== id;
   });
@@ -76,7 +83,7 @@ const deleteItem = async (id: string) => {
 
 const viewItem = async (id: string) => {
   try {
-    const response = await axios.get(`/api/v1/data/${id}`);
+    const response = await axiosService.get(`${id}`);
     // console.log(response.data);
     itemToBeViewed.value = JSON.stringify(response.data, null, 2);
   } catch (error) {
