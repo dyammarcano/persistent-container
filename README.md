@@ -1,6 +1,7 @@
-# Data Store 
+[![Lint](https://github.com/dyammarcano/persistent-container/actions/workflows/lint.yaml/badge.svg)](https://github.com/dyammarcano/persistent-container/actions/workflows/lint.yaml)
+# Data Store
 
-## Under active development  -  Not ready for production
+## Under active development - Not ready for production
 
 ## TODO
 
@@ -29,6 +30,13 @@
 - [ ] Data migration
 - [ ] Data replication
 - [ ] Web UI application (Vue 3)
+    - [ ] Login page
+    - [ ] Metrics page
+    - [ ] Create data
+    - [x] Read data
+    - [ ] Update data
+    - [ ] Delete data
+    - [ ] List data
 - [ ] Standalone application (Electron)
 
 ### Simple container struct to wrap any struct and persist it to disk as CBOR encoded data.
@@ -49,11 +57,13 @@
 
 ## Under the hood
 
-This package uses [bbolt](https://github.com/etcd-io/bbolt) to persist data to disk, and [cbor](github.com/fxamacker/cbor/v2) to encode and decode data.
+This package uses [bbolt](https://github.com/etcd-io/bbolt) to persist data to disk,
+and [cbor](github.com/fxamacker/cbor/v2) to encode and decode data.
 
 ## Disclaimer
 
-This package is not intended to be used in production, it is just a simple wrapper to persist data to disk, is thread safe, and it is not intended to be used in a concurrent environment.
+This package is not intended to be used in production, it is just a simple wrapper to persist data to disk, is thread
+safe, and it is not intended to be used in a concurrent environment.
 
 ## Usage
 
