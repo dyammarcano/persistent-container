@@ -6,7 +6,7 @@ before:
     - go generate ./...
 
 builds:
-  - main: ./cmd/module-template-go/main.go
+  - main: ./
     goos:
       - linux
       - windows
